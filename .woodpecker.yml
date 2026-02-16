@@ -1,14 +1,7 @@
+
+
 steps:
   - name: hello
     image: alpine
     commands:
-      - echo "Woodpecker pipeline triggered!"
-      - echo "Event: ${CI_PIPELINE_EVENT}"
-      - echo "Commit: ${CI_COMMIT_SHA}"
-      - echo "Branch: ${CI_COMMIT_BRANCH}"
-
-
-
-
-
-
+      - 'echo "Woodpecker pipeline triggered!"'
