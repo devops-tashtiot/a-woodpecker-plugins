@@ -1,0 +1,29 @@
+when:
+  - event: push
+    path:
+      include: ['plugins/**']
+
+steps:
+  - name: Get changed files
+    image: artifactory.company.zucaim/woodpecker/plugins/changed-files:67d76b44a29
+    settings:
+      output_file: changedFiles.txt
+      output_type: dirs
+      folder_depth: 2
+
+  - name: Build images and push
+
+  - name: Build images
+    image: artifactory.company.zucaim/woodpecker/plugins/kaniko-monorepo:67d76b44a29
+    settings:
+      registry: artifactory.company.zucaim
+      username: XXXXXXXX
+      password:
+        from_secret: artifactory_token
+      repo: woodpecker-dev
+      changed_file: changedFiles.txt
+      tags:
+        - ${CI_COMMIT_SHA:0:11}
+    when:
+      - branch:
+          exclude: [master]
