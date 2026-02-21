@@ -56,7 +56,7 @@
           from_secret: DOCKER_REG_USERNAME
         password: 
           from_secret: DOCKER_REG_PASSWORD
-        repo: ${DOCKER_REG_USERNAME}/woodpecker-dev
+        repo: netanelzucaim123/woodpecker-dev
         changed_file: changedFiles.txt
         tags:
           - ${CI_COMMIT_SHA:0:11}
