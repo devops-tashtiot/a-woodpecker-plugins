@@ -66,7 +66,7 @@
         GITEA_TOKEN:
           from_secret: GITEA_TOKEN
         GH_TOKEN:
-          from_secret: GITHUB_TOKEN
+          from_secret: GITEA_TOKEN
         GITEA_USERNAME: netanelzucaim
         GITEA_PASSWORD: 617006d5f534d5c589001956680e8805e07132c4
 
