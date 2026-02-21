@@ -11,3 +11,5 @@ RUN chmod +x changed.sh
 RUN git config --global --add safe.directory '*'
 
 ENTRYPOINT /app/changed.sh
+
+
