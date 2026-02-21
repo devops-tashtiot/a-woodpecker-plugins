@@ -13,3 +13,4 @@ RUN git config --global --add safe.directory '*'
 ENTRYPOINT /app/changed.sh
 
 
+
