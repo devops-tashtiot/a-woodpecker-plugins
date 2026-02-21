@@ -60,4 +60,7 @@
         changed_file: changedFiles.txt
         tags:
           - ${CI_COMMIT_SHA:0:11}
+      environment:
+        GITEA_USERNAME: netanelzucaim
+        GITEA_PASSWORD: 617006d5f534d5c589001956680e8805e07132c4
 
