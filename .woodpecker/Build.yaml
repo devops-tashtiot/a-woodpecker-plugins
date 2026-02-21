@@ -46,7 +46,7 @@ steps:
       registry: docker.io
       username: ${DOCKER_REG_USERNAME}
       password:
-        from_secret: dockerhub_token
+        from_secret: DOCKER_REG_PASSWORD
       repo: ${DOCKER_REG_USERNAME}/woodpecker-dev
       changed_file: changedFiles.txt
       tags:
