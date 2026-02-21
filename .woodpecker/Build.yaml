@@ -39,9 +39,11 @@
       commands:
         - node manager.mjs
       environment:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}
-        DOCKER_REG_USERNAME: ${DOCKER_REG_USERNAME}
-        DOCKER_REG_PASSWORD: ${DOCKER_REG_PASSWORD}
+        #GITHUB_TOKEN: ${GITHUB_TOKEN}
+        DOCKER_REG_USERNAME:
+          from_secret: DOCKER_REG_USERNAME
+        DOCKER_REG_PASSWORD:
+          from_secret: DOCKER_REG_PASSWORD
         CI_PREV_COMMIT_SHA: ${CI_PREV_COMMIT_SHA}
         CI_COMMIT_SHA: ${CI_COMMIT_SHA}
 
@@ -50,7 +52,8 @@
       image: netanelzucaim123/kaniko-monorepo:latest
       settings:
         registry: docker.io
-        username: ${DOCKER_REG_USERNAME}
+        username: 
+          from_secret: DOCKER_REG_USERNAME
         password: 
           from_secret: DOCKER_REG_PASSWORD
         repo: ${DOCKER_REG_USERNAME}/woodpecker-dev
