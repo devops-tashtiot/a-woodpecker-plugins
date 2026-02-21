@@ -46,7 +46,9 @@
           from_secret: DOCKER_REG_PASSWORD
         CI_PREV_COMMIT_SHA: ${CI_PREV_COMMIT_SHA}
         CI_COMMIT_SHA: ${CI_COMMIT_SHA}
-
+        GITEA_TOKEN:
+          from_secret: GITEA_TOKEN
+        GITEA_USERNAME: netanelzucaim
 
     - name: Build images
       image: docker.io/netanelzucaim123/kaniko-monorepo:latest
