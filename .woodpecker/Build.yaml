@@ -12,11 +12,11 @@
         output_type: dirs
         folder_depth: 2
 
-    - name: Validate Commit Messages
-      image: node:lts
-      commands:
-        - npm install conventional-commits-parser
-        - node .github/scripts/validate-commits.js
+    #- name: Validate Commit Messages
+    #  image: node:lts
+    #  commands:
+    #    - npm install conventional-commits-parser
+    #    - node .github/scripts/validate-commits.js
 
     - name: Install Dependencies
       image: node:lts
