@@ -3,7 +3,7 @@ when:
   
 steps:
   - name: Get changed files
-    image: nanetanelzucaim123/changed-files:latest
+    image: netanelzucaim123/changed-files:latest
     settings:
       output_file: changedFiles.txt
       output_type: dirs
@@ -41,7 +41,7 @@ steps:
 
 
   - name: Build images
-    image: netanelzucaim123/kaniko-monorepo:lastest
+    image: netanelzucaim123/kaniko-monorepo:latest
     settings:
       registry: docker.io
       username: ${DOCKER_REG_USERNAME}
