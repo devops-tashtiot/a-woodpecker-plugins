@@ -49,7 +49,7 @@
 
 
     - name: Build images
-      image: netanelzucaim123/kaniko-monorepo:latest
+      image: docker.io/netanelzucaim123/kaniko-monorepo:latest
       settings:
         registry: docker.io
         username: 
