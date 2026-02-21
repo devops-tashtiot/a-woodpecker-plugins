@@ -26,3 +26,4 @@ module.exports = {
     (commit) => commit.trim() === 'Initial plan',
   ],
 };
+

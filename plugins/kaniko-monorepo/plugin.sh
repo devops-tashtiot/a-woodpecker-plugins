@@ -36,7 +36,7 @@ setup_docker_auth() {
         cat > /kaniko/.docker/config.json <<DOCKERJSON
 {
     "auths": {
-        "${REGISTRY}": {
+        "${PLUGIN_REGISTRY}": {
             "auth": "${DOCKER_AUTH}"
         }
     }
@@ -72,7 +72,7 @@ setup_kaniko_options() {
     fi
 
     if [ -n "${PLUGIN_CACHE_REPO:-}" ]; then
-        local CACHE_REPO="--cache-repo=${REGISTRY}/${PLUGIN_CACHE_REPO}"
+        local CACHE_REPO="--cache-repo=${PLUGIN_REGISTRY}/${PLUGIN_CACHE_REPO}"
     fi
 
     if [ -n "${PLUGIN_CACHE_TTL:-}" ]; then
@@ -137,14 +137,14 @@ determine_destinations() {
         # Cache is not valid with --no-push
         local CACHE=""
     elif [ -n "${PLUGIN_TAGS:-}" ]; then
-        local DESTINATIONS=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
+        local DESTINATIONS=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
     elif [ -f .tags ]; then
         # shellcheck disable=SC3001
         while IFS= read -r tag; do
-            DESTINATIONS=$(concatenate_strings "${DESTINATIONS}" "--destination=${REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}")
+            DESTINATIONS=$(concatenate_strings "${DESTINATIONS}" "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}")
         done < <(sed -e 's/,\s*/\n/g' .tags)
     elif [ -n "${PLUGIN_REPO:-}" ]; then
-        local DESTINATIONS="--destination=${REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
+        local DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
     fi
     echo "${DESTINATIONS}"
 }

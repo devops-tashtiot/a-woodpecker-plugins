@@ -27,7 +27,7 @@
     - name: Login to Docker Hub
       image: docker
       commands:
-        - echo $DOCKER_REG_PASSWORD | docker login -u $DOCKER_REG_USERNAME --password-stdin
+        - echo $DOCKER_REG_PASSWORD | docker login docker.io -u $DOCKER_REG_USERNAME --password-stdin
       environment:
         DOCKER_REG_USERNAME:
           from_secret: DOCKER_REG_USERNAME
