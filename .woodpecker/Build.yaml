@@ -11,19 +11,46 @@ steps:
       output_type: dirs
       folder_depth: 2
 
-  - name: Build images and push
+  - name: Validate Commit Messages
+    image: node:lts
+    commands:
+      - npm install conventional-commits-parser
+      - node .github/scripts/validate-commits.js
+
+  - name: Install Dependencies
+    image: node:lts
+    commands:
+      - npm ci
+
+  - name: Login to Docker Hub
+    image: docker
+    commands:
+      - echo $DOCKER_REG_PASSWORD | docker login -u $DOCKER_REG_USERNAME --password-stdin
+    environment:
+      DOCKER_REG_USERNAME: ${DOCKER_REG_USERNAME}
+      DOCKER_REG_PASSWORD: ${DOCKER_REG_PASSWORD}
+
+  - name: Run Manager
+    image: node:lts
+    commands:
+      - node manager.mjs
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      DOCKER_REG_USERNAME: ${DOCKER_REG_USERNAME}
+      DOCKER_REG_PASSWORD: ${DOCKER_REG_PASSWORD}
+      CI_PREV_COMMIT_SHA: ${CI_PREV_COMMIT_SHA}
+      CI_COMMIT_SHA: ${CI_COMMIT_SHA}
+
 
   - name: Build images
     image: netanelzucaim123/kaniko-monorepo:lastest
     settings:
-      registry: artifactory.company.zucaim
-      username: XXXXXXXX
+      registry: docker.io
+      username: ${DOCKER_REG_USERNAME}
       password:
-        from_secret: artifactory_token
-      repo: woodpecker-dev
+        from_secret: dockerhub_token
+      repo: ${DOCKER_REG_USERNAME}/woodpecker-dev
       changed_file: changedFiles.txt
       tags:
         - ${CI_COMMIT_SHA:0:11}
-    when:
-      - branch:
-          exclude: [master]
+
