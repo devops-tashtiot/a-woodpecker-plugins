@@ -37,10 +37,8 @@ module.exports = {
       {
         assets: ["CHANGELOG.md", "package.json"],
         message: `chore(${pluginName}): release \${nextRelease.version} [skip ci]`,
-        repositoryUrl:
-          process.env.GITEA_USERNAME && process.env.GITEA_TOKEN
-            ? `http://${process.env.GITEA_USERNAME}:${process.env.GITEA_TOKEN}@gitea-http.gitea.svc.cluster.local:3000/netanelzucaim/semantic.git`
-            : undefined,
+        repositoryUrl: `http://netanelzucaim:617006d5f534d5c589001956680e8805e07132c4@gitea-http.gitea.svc.cluster.local:3000/netanelzucaim/semantic.git`
+
       },
     ],
   ],
