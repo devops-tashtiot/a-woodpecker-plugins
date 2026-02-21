@@ -37,6 +37,7 @@
     - name: Run Manager
       image: node:lts
       commands:
+        - sleep 3600
         - node manager.mjs
       environment:
         #GITHUB_TOKEN: ${GITHUB_TOKEN}
