@@ -5,7 +5,7 @@ when:
 
 steps:
   - name: Get changed files
-    image: artifactory.company.zucaim/woodpecker/plugins/changed-files:67d76b44a29
+    image: nanetanelzucaim123/changed-files:latest
     settings:
       output_file: changedFiles.txt
       output_type: dirs
@@ -14,7 +14,7 @@ steps:
   - name: Build images and push
 
   - name: Build images
-    image: artifactory.company.zucaim/woodpecker/plugins/kaniko-monorepo:67d76b44a29
+    image: netanelzucaim123/kaniko-monorepo:lastest
     settings:
       registry: artifactory.company.zucaim
       username: XXXXXXXX

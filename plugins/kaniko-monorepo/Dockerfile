@@ -1,4 +1,4 @@
-FROM artifactory.company.zucaim/woodpecker/base/kaniko-project/executor:v1.23.2-debug
+FROM gcr.io/kaniko-project/executor:v1.23.2-debug
 
 WORKDIR /app
 ENV HOME=/root

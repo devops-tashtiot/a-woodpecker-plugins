@@ -1,4 +1,4 @@
-FROM artifactory.company.zucaim/woodpecker/base/ubi:9.2-696
+FROM registry.access.redhat.com/ubi9/ubi:9.2-696
 
 ENV PANDOC_URL=https://github.com/jgm/pandoc/releases/download/3.8/pandoc-3.8-linux-amd64.tar.gz
 
