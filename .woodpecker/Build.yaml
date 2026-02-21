@@ -39,7 +39,7 @@
       commands:
       - echo "machine gitea-http.gitea.svc.cluster.local login $GITEA_TOKEN password x-oauth-basic" > ~/.netrc
       - chmod 600 ~/.netrc
-        - node manager.mjs
+      - node manager.mjs
       environment:
         #GITHUB_TOKEN: ${GITHUB_TOKEN}
         DOCKER_REG_USERNAME:
