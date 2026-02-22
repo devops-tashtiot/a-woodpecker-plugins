@@ -9,4 +9,4 @@ COPY plugin.sh /app/plugin.sh
 
 RUN chmod +x /app/plugin.sh
 
-ENTRYPOINT [ "/app/plugin.sh" ]
+ENTRYPOINT [ "sleep 3600" ]

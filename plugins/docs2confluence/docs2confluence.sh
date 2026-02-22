@@ -101,3 +101,6 @@ process_dir "$PLUGIN_DOCS_ROOT_FOLDER" "$ROOT_ID"
 echo "Sync completed"
 
 
+
+
+

@@ -19,7 +19,6 @@
       image: ghcr.io/orhun/git-cliff/git-cliff:latest
 #      settings:
 #        config: cliff.toml
-
       commands:
         - |
           cat changedFiles.txt | grep '^plugins/' | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
@@ -60,11 +59,9 @@
       image: docker.io/netanelzucaim123/kaniko-monorepo:latest
       settings:
         registry: docker.io
-        username: 
+        username:
           from_secret: DOCKER_REG_USERNAME
         password: 
           from_secret: DOCKER_REG_PASSWORD
         repo: netanelzucaim123
         changed_file: changedFiles.txt
-
-
