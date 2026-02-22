@@ -15,3 +15,5 @@ COPY docs2confluence.sh docs2confluence.sh
 RUN chmod +x docs2confluence.sh
 
 CMD /app/docs2confluence.sh
+
+
