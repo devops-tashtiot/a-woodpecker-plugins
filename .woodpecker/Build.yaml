@@ -13,7 +13,7 @@
         folder_depth: 2
     
     - name: Generate Versions and Changelogs
-      image: orhun/git-cliff:latest
+      image: ghcr.io/orhun/git-cliff/git-cliff:latest
 #      settings:
 #        config: cliff.toml
       commands:
