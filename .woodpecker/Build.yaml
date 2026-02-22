@@ -15,7 +15,7 @@
         output_type: dirs
         folder_depth: 2
     
-- name: Generate Versions and Changelogs
+    - name: Generate Versions and Changelogs
       image: orhun/git-cliff:latest
       commands:
         - git fetch --tags
