@@ -99,3 +99,5 @@ ROOT_ID=$(find_or_create_page "$PLUGIN_CONFLUENCE_ROOT_FOLDER" "" "")
 process_dir "$PLUGIN_DOCS_ROOT_FOLDER" "$ROOT_ID"
 
 echo "Sync completed"
+
+
