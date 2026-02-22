@@ -64,4 +64,4 @@
         password: 
           from_secret: DOCKER_REG_PASSWORD
         repo: netanelzucaim123
-        changed_file: changedFiles.txt
+        changed_file: changed_folders.txt
