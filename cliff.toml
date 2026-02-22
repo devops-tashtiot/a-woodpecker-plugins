@@ -43,4 +43,4 @@ commit_parsers = [
 # protect breaking changes from being skipped due to matching a skipping commit_parser
 filter_commits = false
 # glob patterns for matching git tags
-tag_pattern = "v[0-9]*"
+tag_pattern = "[0-9]*"
