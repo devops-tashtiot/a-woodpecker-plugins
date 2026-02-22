@@ -15,29 +15,37 @@
         output_type: dirs
         folder_depth: 2
     
-    - name: Generate Versions and Changelogs
-      image: ghcr.io/orhun/git-cliff/git-cliff:latest
-#      settings:
-#        config: cliff.toml
+- name: Generate Versions and Changelogs
+      image: orhun/git-cliff:latest
       commands:
+        - git fetch --tags
         - |
-          while IFS= read -r dir; do
-            # Ensure we are looking at a directory inside 'plugins/' 
-            # and it's not the root itself
-            if [ -z "$dir" ] || [ "$dir" = "." ]; then continue; fi
+          # Use sed to remove any double quotes or trailing/leading whitespace from the file
+          sed -i 's/"//g; s/^[[:space:]]*//; s/[[:space:]]*$//' changedFiles.txt
+          
+          while IFS= read -r dir || [ -n "$dir" ]; do
+            # Skip empty lines
+            [ -z "$dir" ] && continue
             
+            # Remove any remaining carriage returns (common if coming from different OS)
+            dir=$(echo "$dir" | tr -d '\r')
+            
+            # Check if the directory actually exists before proceeding
+            if [ ! -d "$dir" ]; then
+              echo "Skipping: $dir (Directory not found)"
+              continue
+            fi
+
             echo "Processing: $dir"
             
-            # Calculate next version based on folder history
-            # If no tags exist, it defaults to 1.0.0 or similar
-            NEXT_VERSION=$(git-cliff --bump --include-path "$dir/**" --strip all || echo "1.0.0")
+            # Calculate next version
+            NEXT_VERSION=$(git-cliff --bump --include-path "$dir/**" --strip all || echo "0.1.0")
             
-            # Save for Kaniko
+            # Create VERSION and CHANGELOG
             echo "$NEXT_VERSION" > "$dir/VERSION"
+            git-cliff --config cliff.toml --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
             
-            # Update the local changelog
-            git-cliff --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
-            
+            echo "Successfully updated $dir to $NEXT_VERSION"
           done < changedFiles.txt
       #when:
       #  branch: main
