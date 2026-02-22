@@ -21,10 +21,9 @@ concatenate_strings() {
 load_environment() {
     local env_file="${PLUGIN_ENV_FILE:-}"
     if [ -f "${PWD}/${env_file}" ]; then
-        # shellcheck disable=SC3001
         while IFS= read -r line; do
             export "${line?}"
-        done < <(grep -v "^#" "${PWD}/${env_file}")
+        done < <(grep -v '^ *#' "${PWD}/${env_file}")
     fi
 }
 
@@ -85,7 +84,6 @@ setup_kaniko_options() {
 
     local BUILD_ARGS_FROM_ENV=""
     if [ -n "${PLUGIN_BUILD_ARGS_FROM_ENV:-}" ]; then
-        # shellcheck disable=SC3003
         while IFS= read -r build_arg; do
             BUILD_ARGS_FROM_ENV=$(concatenate_strings "${BUILD_ARGS_FROM_ENV}" "--build-arg ${build_arg}=$(eval "echo \$$build_arg")")
         done < <(echo "${PLUGIN_BUILD_ARGS_FROM_ENV}" | tr ',' '\n')
@@ -104,12 +102,10 @@ setup_kaniko_options() {
     fi
 }
 
-# Generate tags
+# Generate tags (Global fallback tags)
 generate_tags() {
     local TAG=$(echo "${CI_COMMIT_TAG:-}" | sed 's/^v//g')
     local part=$(echo "${TAG}" | tr ',' '\n' | wc -l)
-    # expect number
-    # shellcheck disable=SC3020
     echo "${TAG}" | grep -E "[a-z-]" &>/dev/null && local isNum=1 || local isNum=0
 
     if [ -z "${TAG:-}" ]; then
@@ -129,22 +125,46 @@ generate_tags() {
     fi
 }
 
-# Determine destinations
+# UPDATED: Determine destinations with Folder-Aware versioning
 determine_destinations() {
     local file_path="${1}"
+    local DESTINATIONS=""
+    
+    # 1. Look for the specific VERSION file created by git-cliff
+    local folder_version=""
+    if [ -f "${file_path}/VERSION" ]; then
+        folder_version=$(cat "${file_path}/VERSION" | tr -d '\n\r ')
+    fi
+
     if [ "${PLUGIN_DRY_RUN:-}" = "true" ] || [ -z "${PLUGIN_REPO:-}" ]; then
-        local DESTINATIONS="--no-push"
-        # Cache is not valid with --no-push
-        local CACHE=""
+        DESTINATIONS="--no-push"
+    
+    # 2. Priority 1: Use the Folder Version if it exists
+    elif [ -n "${folder_version}" ]; then
+        echo "Found version ${folder_version} for ${file_path}"
+        DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${folder_version}"
+        # Also push 'latest' for this specific folder
+        DESTINATIONS="${DESTINATIONS} --destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
+        
+        # Also add global tags from YAML (like commit SHA) if provided
+        if [ -n "${PLUGIN_TAGS:-}" ]; then
+            local extra=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
+            DESTINATIONS="${DESTINATIONS} ${extra}"
+        fi
+
+    # 3. Priority 2: Fallback to YAML tags
     elif [ -n "${PLUGIN_TAGS:-}" ]; then
-        local DESTINATIONS=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
+        DESTINATIONS=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
+    
+    # 4. Priority 3: Fallback to .tags file logic
     elif [ -f .tags ]; then
-        # shellcheck disable=SC3001
         while IFS= read -r tag; do
             DESTINATIONS=$(concatenate_strings "${DESTINATIONS}" "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}")
         done < <(sed -e 's/,\s*/\n/g' .tags)
+    
+    # 5. Final Fallback: Push as latest
     elif [ -n "${PLUGIN_REPO:-}" ]; then
-        local DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
+        DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
     fi
     echo "${DESTINATIONS}"
 }
@@ -154,11 +174,11 @@ kaniko() {
     local path="${1}"
     local destinations=$(determine_destinations "${path}")
     echo "================================================================"
+    echo "Building path: ${path}"
+    echo "Destinations:"
     echo "${destinations}" | tr ' ' '\n' | cut -d '=' -f 2-
     echo "================================================================"
-    # Double quotes can't be used, otherwise kaniko takes all arguments as one.
-    # With bash, an array could have been used to avoid disabling this check.
-    # shellcheck disable=SC2086
+    
     /kaniko/executor -v "${LOG}" \
         --context="${CONTEXT}/${path}" \
         --cleanup \
@@ -177,7 +197,10 @@ kaniko() {
 # Run the script
 run() {
     while IFS= read -r path; do
-        kaniko "${path}"
+        # Ensure we don't process empty lines
+        if [ -n "$path" ]; then
+            kaniko "$path"
+        fi
     done < "${PLUGIN_CHANGED_FILE}"
 }
 
@@ -190,9 +213,5 @@ main() {
 }
 
 main
-
-
-
-
 
 

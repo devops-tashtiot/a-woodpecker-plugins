@@ -19,6 +19,7 @@
       image: ghcr.io/orhun/git-cliff/git-cliff:latest
 #      settings:
 #        config: cliff.toml
+
       commands:
         - |
           sleep 3600
@@ -44,7 +45,7 @@
 
             # Update the local changelog
             git-cliff --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
-          done < changed_folders.txt
+          done < changed_folders.txt 
       #when:
       #  branch: main
      #   event: push
@@ -96,15 +97,7 @@
           from_secret: DOCKER_REG_USERNAME
         password: 
           from_secret: DOCKER_REG_PASSWORD
-        repo: netanelzucaim123/woodpecker-dev
+        repo: netanelzucaim123
         changed_file: changedFiles.txt
-        tags:
-          - ${CI_COMMIT_SHA:0:11}
-      environment:
-        GITEA_TOKEN:
-          from_secret: GITEA_TOKEN
-        GH_TOKEN:
-          from_secret: GITEA_TOKEN
-        GITEA_USERNAME: netanelzucaim
-        GITEA_PASSWORD: 617006d5f534d5c589001956680e8805e07132c4
+
 
