@@ -22,7 +22,7 @@
       commands:
         - |
           sleep 3600
-          cat changed.txt | grep '^plugins/' | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
+          cat changedFiles.txt | grep '^plugins/' | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
           while IFS= read -r dir; do
             # Clean the directory string (remove quotes if they exist)
             dir=$(echo "$dir" | tr -d '"')
@@ -34,15 +34,16 @@
             # Ensure the directory exists in the workspace
             mkdir -p "$dir"
 
-            # Calculate next version with the 'v' prefix
-            NEXT_VERSION="v$(git-cliff --bump --include-path "$dir/**" --strip all || echo "0.1.0")"
-            
-            # Save for Kaniko
+            # Calculate next version, defaulting to 1.0.0 if no previous tags exist
+            NEXT_VERSION=$(git-cliff --bumped-version --include-path "$dir/**" || echo "1.0.0")
+
+            echo "Next version for $dir is $NEXT_VERSION"
+
+            # Save purely the version string for Kaniko
             echo "$NEXT_VERSION" > "$dir/VERSION"
-            
+
             # Update the local changelog
             git-cliff --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
-            
           done < changed_folders.txt
       #when:
       #  branch: main
