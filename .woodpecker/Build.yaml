@@ -21,6 +21,7 @@
 #        config: cliff.toml
       commands:
         - |
+          sleep 3600
           while IFS= read -r dir; do
             # Clean the directory string (remove quotes if they exist)
             dir=$(echo "$dir" | tr -d '"')
