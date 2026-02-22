@@ -17,7 +17,7 @@ if [ ! -d "$OUTPUT_DIR" ]; then
     exit 1
 fi
 
-changed_files=$(echo "${CI_PIPELINE_FILES}" | tr -d '[]' | tr ',' '\n')
+changed_files=$(echo "${CI_PIPELINE_FILES}" | tr -d '["]' | tr ',' '\n')
 
 if [ $? -ne 0 ]; then
     echo "Error: Failed to get changed files using git diff." >&2
@@ -26,7 +26,7 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ -n "${PLUGIN_EXCLUDE_FILES:-}" ]; then
-    regex="^($(echo "$PLUGIN_EXCLUDE_FILES" | tr ',' '|'))$"
+    regex="^($(echo "$PLUGIN_EXCLUDE_FILES" | tr ',' '|'))"
     changed_files=$(printf '%s' "$changed_files" | grep -Ev "$regex" || true)
 fi
 
@@ -82,6 +82,3 @@ if ! cat "$OUTPUT_FILE"; then
     echo "Error: Failed to read output from file '$OUTPUT_FILE'." >&2
     exit 1
 fi
-
-
-

@@ -21,7 +21,8 @@
 #        config: cliff.toml
       commands:
         - |
-          sleep 3600
+          sleep 
+          cat changed.txt | grep '^plugins/' | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
           while IFS= read -r dir; do
             # Clean the directory string (remove quotes if they exist)
             dir=$(echo "$dir" | tr -d '"')
@@ -42,7 +43,7 @@
             # Update the local changelog
             git-cliff --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
             
-          done < changedFiles.txt
+          done < changed_folders.txt
       #when:
       #  branch: main
      #   event: push
