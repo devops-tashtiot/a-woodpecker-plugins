@@ -16,36 +16,31 @@
         folder_depth: 2
     
     - name: Generate Versions and Changelogs
-      image: orhun/git-cliff:latest
+      image: ghcr.io/orhun/git-cliff/git-cliff:latest
+#      settings:
+#        config: cliff.toml
       commands:
-        - git fetch --tags
         - |
-          # Use sed to remove any double quotes or trailing/leading whitespace from the file
-          sed -i 's/"//g; s/^[[:space:]]*//; s/[[:space:]]*$//' changedFiles.txt
-          
-          while IFS= read -r dir || [ -n "$dir" ]; do
-            # Skip empty lines
-            [ -z "$dir" ] && continue
+          while IFS= read -r dir; do
+            # Clean the directory string (remove quotes if they exist)
+            dir=$(echo "$dir" | tr -d '"')
             
-            # Remove any remaining carriage returns (common if coming from different OS)
-            dir=$(echo "$dir" | tr -d '\r')
+            if [ -z "$dir" ] || [ "$dir" = "." ]; then continue; fi
             
-            # Check if the directory actually exists before proceeding
-            if [ ! -d "$dir" ]; then
-              echo "Skipping: $dir (Directory not found)"
-              continue
-            fi
-
             echo "Processing: $dir"
+
+            # Ensure the directory exists in the workspace
+            mkdir -p "$dir"
+
+            # Calculate next version with the 'v' prefix
+            NEXT_VERSION="v$(git-cliff --bump --include-path "$dir/**" --strip all || echo "0.1.0")"
             
-            # Calculate next version
-            NEXT_VERSION=$(git-cliff --bump --include-path "$dir/**" --strip all || echo "0.1.0")
-            
-            # Create VERSION and CHANGELOG
+            # Save for Kaniko
             echo "$NEXT_VERSION" > "$dir/VERSION"
-            git-cliff --config cliff.toml --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
             
-            echo "Successfully updated $dir to $NEXT_VERSION"
+            # Update the local changelog
+            git-cliff --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
+            
           done < changedFiles.txt
       #when:
       #  branch: main
