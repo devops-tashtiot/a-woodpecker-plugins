@@ -36,9 +36,9 @@
             git-cliff --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
             
           done < changedFiles.txt
-      when:
-        branch: main
-        event: push
+      #when:
+      #  branch: main
+     #   event: push
     #- name: Validate Commit Messages
     #  image: node:lts
     #  commands:
