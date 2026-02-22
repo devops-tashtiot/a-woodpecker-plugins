@@ -14,8 +14,8 @@
     
     - name: Generate Versions and Changelogs
       image: orhun/git-cliff:latest
-      settings:
-        config: cliff.toml
+#      settings:
+#        config: cliff.toml
       commands:
         - |
           while IFS= read -r dir; do
@@ -26,8 +26,8 @@
             echo "Processing: $dir"
             
             # Calculate next version based on folder history
-            # If no tags exist, it defaults to 0.1.0 or similar
-            NEXT_VERSION=$(git-cliff --bump --include-path "$dir/**" --strip all || echo "0.1.0")
+            # If no tags exist, it defaults to 1.0.0 or similar
+            NEXT_VERSION=$(git-cliff --bump --include-path "$dir/**" --strip all || echo "1.0.0")
             
             # Save for Kaniko
             echo "$NEXT_VERSION" > "$dir/VERSION"
