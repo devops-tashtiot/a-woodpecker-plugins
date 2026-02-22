@@ -21,7 +21,7 @@
 #        config: cliff.toml
       commands:
         - |
-          sleep 
+          sleep 3600
           cat changed.txt | grep '^plugins/' | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
           while IFS= read -r dir; do
             # Clean the directory string (remove quotes if they exist)
