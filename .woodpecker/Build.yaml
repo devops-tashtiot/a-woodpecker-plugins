@@ -2,8 +2,11 @@
     - event: push
       branch:
         include: [main]
-    - event: manual
+      paths:
+        include:
+          - plugins/**
     
+
   steps:
     - name: Get changed files
       image: docker.io/netanelzucaim123/changed-files:latest
