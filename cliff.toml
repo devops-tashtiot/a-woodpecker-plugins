@@ -24,7 +24,7 @@ trim = true
 [git]
 # parse aspects of the git log
 conventional_commits = true
-filter_unconventional = true
+filter_unconventional = false
 split_commits = false
 # regex for parsing conventional commits
 commit_parsers = [

@@ -1,2 +1,1 @@
-.woodpecker/Build.yaml
-plugins/docs2confluence/VERSION
+plugins/docs2confluence/docs2confluence.sh
