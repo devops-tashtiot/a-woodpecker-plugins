@@ -1,1 +1,1 @@
-plugins/docs2confluence/docs2confluence.sh
+plugins/changed-files/Dockerfile
