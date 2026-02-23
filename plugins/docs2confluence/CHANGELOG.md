@@ -4,6 +4,74 @@
 
 - Add retry mechanism for failed requests
 - Add retry mechanism for failed requests
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+
+## [1.6.9] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+
+## [1.6.10] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+
+## [1.6.9] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+
+## [1.6.10] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
 
 ### Other
 
