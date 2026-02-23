@@ -19,19 +19,26 @@ concatenate_strings() {
 
 # Load environment variables from a file
 load_environment() {
+    echo "DEBUG: Entering load_environment" >&2
     local env_file="${PLUGIN_ENV_FILE:-}"
     if [ -f "${PWD}/${env_file}" ]; then
+        echo "DEBUG: Found env file at ${PWD}/${env_file}" >&2
         while IFS= read -r line; do
             export "${line?}"
         done < <(grep -v '^ *#' "${PWD}/${env_file}")
+    else
+        echo "DEBUG: No environment file found to load" >&2
     fi
 }
 
 # Set up Docker authentication
 setup_docker_auth() {
+    echo "DEBUG: Entering setup_docker_auth" >&2
     if [ -n "${PLUGIN_USERNAME:-}" ] || [ -n "${PLUGIN_PASSWORD:-}" ]; then
+        echo "DEBUG: Creating auth for registry: ${PLUGIN_REGISTRY:-index.docker.io}" >&2
         local DOCKER_AUTH=$(echo -n "${PLUGIN_USERNAME}:${PLUGIN_PASSWORD}" | base64 | tr -d '\n')
 
+        mkdir -p /kaniko/.docker
         cat > /kaniko/.docker/config.json <<DOCKERJSON
 {
     "auths": {
@@ -41,15 +48,23 @@ setup_docker_auth() {
     }
 }
 DOCKERJSON
+        echo "DEBUG: /kaniko/.docker/config.json has been written" >&2
+    else
+        echo "DEBUG: No credentials provided, skipping docker auth setup" >&2
     fi
 }
 
 # Set up Kaniko options
 setup_kaniko_options() {
+    echo "DEBUG: Entering setup_kaniko_options" >&2
     DOCKERFILE=${PLUGIN_DOCKERFILE:-Dockerfile}
     CONTEXT=${PLUGIN_CONTEXT:-$PWD}
     LOG=${PLUGIN_LOG_LEVEL:-info}
     EXTRA_OPTS=""
+    
+    echo "DEBUG: Context is set to: ${CONTEXT}" >&2
+    echo "DEBUG: Dockerfile is set to: ${DOCKERFILE}" >&2
+
     if [ "${PLUGIN_SKIP_TLS_VERIFY:-}" = "true" ]; then
         EXTRA_OPTS=$(concatenate_strings "${EXTRA_OPTS}" '--skip-tls-verify=true')
     fi
@@ -67,6 +82,7 @@ setup_kaniko_options() {
     fi
 
     if [ "${PLUGIN_CACHE:-}" = "true" ]; then
+        echo "DEBUG: Kaniko cache is enabled" >&2
         local CACHE="--cache=true"
     fi
 
@@ -79,11 +95,13 @@ setup_kaniko_options() {
     fi
 
     if [ -n "${PLUGIN_BUILD_ARGS:-}" ]; then
+        echo "DEBUG: Processing BUILD_ARGS" >&2
         local BUILD_ARGS=$(echo "${PLUGIN_BUILD_ARGS}" | tr ',' '\n' | while read -r build_arg; do echo "--build-arg ${build_arg}"; done)
     fi
 
     local BUILD_ARGS_FROM_ENV=""
     if [ -n "${PLUGIN_BUILD_ARGS_FROM_ENV:-}" ]; then
+        echo "DEBUG: Processing BUILD_ARGS_FROM_ENV" >&2
         while IFS= read -r build_arg; do
             BUILD_ARGS_FROM_ENV=$(concatenate_strings "${BUILD_ARGS_FROM_ENV}" "--build-arg ${build_arg}=$(eval "echo \$$build_arg")")
         done < <(echo "${PLUGIN_BUILD_ARGS_FROM_ENV}" | tr ',' '\n')
@@ -94,6 +112,7 @@ setup_kaniko_options() {
     fi
 
     if [ "${PLUGIN_AUTO_TAG:-}" = "true" ]; then
+        echo "DEBUG: Auto-tagging is active" >&2
         generate_tags
     fi
 
@@ -104,6 +123,7 @@ setup_kaniko_options() {
 
 # Generate tags (Global fallback tags)
 generate_tags() {
+    echo "DEBUG: Entering generate_tags" >&2
     local TAG=$(echo "${CI_COMMIT_TAG:-}" | sed 's/^v//g')
     local part=$(echo "${TAG}" | tr ',' '\n' | wc -l)
     echo "${TAG}" | grep -E "[a-z-]" &>/dev/null && local isNum=1 || local isNum=0
@@ -123,6 +143,7 @@ generate_tags() {
 
         echo "${major},${major}.${minor},${major}.${minor}.${release},latest" > .tags
     fi
+    echo "DEBUG: Final tags created: $(cat .tags)" >&2
 }
 
 # UPDATED: Determine destinations with Folder-Aware versioning
@@ -130,20 +151,22 @@ determine_destinations() {
     local file_path="${1}"
     local DESTINATIONS=""
     
+    echo "DEBUG: determine_destinations for ${file_path}" >&2
+    
     # 1. Look for the specific VERSION file created by git-cliff
     local folder_version=""
     if [ -f "${file_path}/VERSION" ]; then
         folder_version=$(cat "${file_path}/VERSION" | tr -d '\n\r ')
+        echo "DEBUG: Found VERSION file inside folder: ${folder_version}" >&2
     fi
 
     if [ "${PLUGIN_DRY_RUN:-}" = "true" ] || [ -z "${PLUGIN_REPO:-}" ]; then
+        echo "DEBUG: Dry run or missing repo. Setting --no-push" >&2
         DESTINATIONS="--no-push"
     
     # 2. Priority 1: Use the Folder Version if it exists
     elif [ -n "${folder_version}" ]; then
-        echo "Found version ${folder_version} for ${file_path}"
         DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${folder_version}"
-        # Also push 'latest' for this specific folder
         DESTINATIONS="${DESTINATIONS} --destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
         
         # Also add global tags from YAML (like commit SHA) if provided
@@ -166,12 +189,16 @@ determine_destinations() {
     elif [ -n "${PLUGIN_REPO:-}" ]; then
         DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
     fi
+    
+    # Return ONLY the destinations string to the caller
     echo "${DESTINATIONS}"
 }
 
 # Run Kaniko
 kaniko() {
     local path="${1}"
+    echo "DEBUG: Preparing Kaniko build for path: ${path}" >&2
+    
     local destinations=$(determine_destinations "${path}")
     echo "================================================================"
     echo "Building path: ${path}"
@@ -179,6 +206,7 @@ kaniko() {
     echo "${destinations}" | tr ' ' '\n' | cut -d '=' -f 2-
     echo "================================================================"
     
+    echo "DEBUG: Launching /kaniko/executor..." >&2
     /kaniko/executor -v "${LOG}" \
         --context="${CONTEXT}/${path}" \
         --cleanup \
@@ -196,25 +224,33 @@ kaniko() {
 
 # Run the script
 run() {
-    while IFS= read -r path; do
-        # Ensure we don't process empty lines
-        if [ -n "$path" ]; then
-            kaniko "$path"
-        fi
-    done < "${PLUGIN_CHANGED_FILE}"
+    echo "DEBUG: Starting run loop" >&2
+    
+    # If the provided path is NOT a file, treat it as a single folder name
+    if [ ! -f "${PLUGIN_CHANGED_FILE}" ]; then
+        echo "DEBUG: ${PLUGIN_CHANGED_FILE} is not a file, treating as direct path" >&2
+        kaniko "${PLUGIN_CHANGED_FILE}"
+    else
+        while IFS= read -r path; do
+            # Ensure we don't process empty lines
+            if [ -n "$path" ]; then
+                echo "DEBUG: Reading path from file: $path" >&2
+                kaniko "$path"
+            fi
+        done < "${PLUGIN_CHANGED_FILE}"
+    fi
 }
 
 # Main function
 main() {
+    echo "--- KANIKO PLUGIN START ---" >&2
     load_environment
     setup_docker_auth
     setup_kaniko_options
     run
+    echo "--- KANIKO PLUGIN FINISHED ---" >&2
 }
 
 main
-
-
-
 
 
