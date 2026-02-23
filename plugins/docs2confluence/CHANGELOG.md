@@ -1,3 +1,83 @@
+## [1.0.1] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+- Check
+- Change in gg
+
+## [1.0.1] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+- Check
+- Change in gg
+
+## [1.0.1] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+- Check
+- Change in gg
+
+## [1.0.1] - 2026-02-23
+
+### Features
+
+- Add retry mechanism for failed requests
+- Add retry mechanism for failed requests
+- Change doc2confluence
+- Change doc2confluence
+
+### Other
+
+- Adding local
+- Start
+- Check
+- Check
+- Check
+- Check
+- Check
+- Change in gg
+
 ## [1.1.0] - 2026-02-23
 
 ### Features
