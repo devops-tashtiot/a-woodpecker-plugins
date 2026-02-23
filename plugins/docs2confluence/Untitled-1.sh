@@ -19,8 +19,8 @@ while IFS= read -r dir; do
     
     # 2. Mock Tag Logic
     MOCK_TAG="$CURRENT_VERSION"
-    if git rev-parse HEAD~2 >/dev/null 2>&1; then
-        git tag -f "$MOCK_TAG" HEAD~2 > /dev/null 2>&1
+    if git rev-parse HEAD~1 >/dev/null 2>&1; then
+        git tag -f "$MOCK_TAG" HEAD~1 > /dev/null 2>&1
         RANGE="$MOCK_TAG..HEAD"
     else
         RANGE="HEAD"
@@ -47,7 +47,7 @@ while IFS= read -r dir; do
     
     echo "Updating CHANGELOG.md..."
     git-cliff HEAD~1..HEAD  \
-        --tag "$NEXT_VERSION" \
+        --tag "1.0.0" \
         --include-path "$dir/**" \
         --prepend "$dir/CHANGELOG.md" \
         --strip all || true

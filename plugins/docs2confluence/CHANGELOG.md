@@ -1,3 +1,27 @@
+## [1.0.0] - 2026-02-23
+
+### Other
+
+- Update a commit
+
+## [1.0.0] - 2026-02-23
+
+### Other
+
+- Update a commit
+
+## [1.0.0] - 2026-02-23
+
+### Other
+
+- Update a commit
+
+## [unreleased]
+
+### Other
+
+- Update a commit
+
 ## [unreleased]
 
 ### Other
