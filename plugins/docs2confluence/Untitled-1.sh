@@ -46,7 +46,7 @@ while IFS= read -r dir; do
     echo -n "$NEXT_VERSION" > "$dir/VERSION"
     
     echo "Updating CHANGELOG.md..."
-    git-cliff --unreleased \
+    git-cliff "$RANGE"  \
         --tag "$NEXT_VERSION" \
         --include-path "$dir/**" \
         --prepend "$dir/CHANGELOG.md" \
