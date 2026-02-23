@@ -153,7 +153,6 @@ determine_destinations() {
     
     echo "DEBUG: determine_destinations for ${file_path}" >&2
     
-    # 1. Look for the specific VERSION file created by git-cliff
     local folder_version=""
     if [ -f "${file_path}/VERSION" ]; then
         folder_version=$(cat "${file_path}/VERSION" | tr -d '\n\r ')
@@ -164,17 +163,16 @@ determine_destinations() {
         echo "DEBUG: Dry run or missing repo. Setting --no-push" >&2
         DESTINATIONS="--no-push"
     
-    # 2. Priority 1: Use the Folder Version if it exists
     elif [ -n "${folder_version}" ]; then
+        echo "Found version ${folder_version} for ${file_path}" >&2
+        
         DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${folder_version}"
         DESTINATIONS="${DESTINATIONS} --destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
         
-        # Also add global tags from YAML (like commit SHA) if provided
         if [ -n "${PLUGIN_TAGS:-}" ]; then
             local extra=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
             DESTINATIONS="${DESTINATIONS} ${extra}"
         fi
-
     # 3. Priority 2: Fallback to YAML tags
     elif [ -n "${PLUGIN_TAGS:-}" ]; then
         DESTINATIONS=$(echo "${PLUGIN_TAGS}" | tr ',' '\n' | while read -r tag; do echo "--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${tag}"; done)
