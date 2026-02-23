@@ -21,28 +21,44 @@
 #        config: cliff.toml
       commands:
         - |
-          cat changedFiles.txt | grep '^plugins/' | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
+          sleep 3600
+          # Extract unique plugin directories
+          grep '^plugins/' changedFiles.txt | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
+
           while IFS= read -r dir; do
-            dir=$(echo "$dir" | tr -d '"' | tr -d '\r')
+            dir=$(echo "$dir" | tr -d '"\r')
+            if [ -z "$dir" ] || [ ! -d "$dir" ]; then continue; fi
             
-            if [ -z "$dir" ] || [ "$dir" = "." ]; then continue; fi
-            
-            echo "Processing: $dir"
-            mkdir -p "$dir"
+            echo "--- Processing: $dir ---"
 
-            # Calculate version
-            NEXT_VERSION=$(GIT_CLIFF__BUMP__INITIAL_TAG="1.0.0" git-cliff --bumped-version --include-path "$dir/**")
-            echo "Next version for $dir is $NEXT_VERSION"
-            echo "$NEXT_VERSION" > "$dir/VERSION"
+            # 1. Get CURRENT version
+            CURRENT_VERSION=$(cat "$dir/VERSION" 2>/dev/null || echo "1.0.0")
 
-            # THE FIX: Create an empty CHANGELOG.md if it doesn't exist yet
-            if [ ! -f "$dir/CHANGELOG.md" ]; then
-              echo "Creating initial CHANGELOG.md for $dir"
-              touch "$dir/CHANGELOG.md"
+            # 2. Try to get NEXT version from git-cliff (based on HEAD)
+            NEXT_VERSION=$(git-cliff HEAD..HEAD \
+                          --bumped-version \
+                          --provided-tag "$CURRENT_VERSION" \
+                          --include-path "$dir/**" || echo "$CURRENT_VERSION")
+
+            # 3. DEFAULT BEHAVIOR: If no bump was detected, force a Patch bump
+            if [ "$NEXT_VERSION" = "$CURRENT_VERSION" ]; then
+                echo "No conventional commit detected. Forcing patch bump..."
+                # Splits version by '.' and increments the last number
+                NEXT_VERSION=$(echo "$CURRENT_VERSION" | awk -F. '{$NF = $NF + 1;} OFS="." {print $0}')
             fi
 
-            # Prepend new commits to the changelog
-            git-cliff --unreleased --tag "$NEXT_VERSION" --include-path "$dir/**" --prepend "$dir/CHANGELOG.md"
+            echo "New version for $dir: $NEXT_VERSION"
+            echo -n "$NEXT_VERSION" > "$dir/VERSION"
+
+            # 4. Generate Changelogק	
+            [ ! -f "$dir/CHANGELOG.md" ] && touch "$dir/CHANGELOG.md"
+            
+            # We use --unpitted to ensure even non-conventional commits appear if they are in the last commit
+            git-cliff HEAD..HEAD \
+                      --tag "$NEXT_VERSION" \
+                      --include-path "$dir/**" \
+                      --prepend "$dir/CHANGELOG.md" \
+                      --strip all
             
           done < changed_folders.txt
       #when:
