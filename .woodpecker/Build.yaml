@@ -65,3 +65,23 @@
           from_secret: DOCKER_REG_PASSWORD
         repo: netanelzucaim123
         changed_file: changed_folders.txt
+
+    - name: Push changes to Git
+      image: alpine/git
+      commands:
+        - git config --global user.email "ci-bot@example.com"
+        - git config --global user.name "CI Bot"
+        - git add plugins/*/VERSION plugins/*/CHANGELOG.md
+        - |
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update VERSION and CHANGELOG.md [ci skip]"
+            git push origin HEAD:main
+          else
+            echo "No changes to commit."
+          fi
+      environment:
+        GIT_AUTH_TOKEN: 1f6f2c2197b4690b6dd0039132b9e97c52198aff
+      when:
+        branch: main
+        event: push
+    

@@ -165,7 +165,7 @@ determine_destinations() {
     
     elif [ -n "${folder_version}" ]; then
         echo "Found version ${folder_version} for ${file_path}" >&2
-        
+        PLUGIN_REPO=${PLUGIN_REPO#plugins/}
         DESTINATIONS="--destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:${folder_version}"
         DESTINATIONS="${DESTINATIONS} --destination=${PLUGIN_REGISTRY}/${PLUGIN_REPO}/${file_path}:latest"
         
