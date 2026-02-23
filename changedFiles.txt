@@ -1,0 +1,2 @@
+.woodpecker/Build.yaml
+plugins/docs2confluence/VERSION
