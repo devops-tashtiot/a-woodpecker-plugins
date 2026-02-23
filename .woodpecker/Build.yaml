@@ -55,16 +55,16 @@
     #    - node .github/scripts/validate-commits.js
 
 
-    - name: Build images
-      image: docker.io/netanelzucaim123/kaniko-monorepo:latest
-      settings:
-        registry: docker.io
-        username:
-          from_secret: DOCKER_REG_USERNAME
-        password: 
-          from_secret: DOCKER_REG_PASSWORD
-        repo: netanelzucaim123
-        changed_file: changed_folders.txt
+#    - name: Build images
+#      image: docker.io/netanelzucaim123/kaniko-monorepo:latest
+#      settings:
+#        registry: docker.io
+#        username:
+#          from_secret: DOCKER_REG_USERNAME
+#        password: 
+#          from_secret: DOCKER_REG_PASSWORD
+#        repo: netanelzucaim123
+#        changed_file: changed_folders.txt
 
     - name: Push changes to Git
       image: alpine/git
