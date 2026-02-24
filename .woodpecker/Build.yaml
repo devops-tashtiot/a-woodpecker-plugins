@@ -18,8 +18,8 @@
     - name: Generate Versions and Changelogs
       image: ghcr.io/orhun/git-cliff/git-cliff:latest
       environment:
-      - INITIAL_TAG_FALLBACK=1.0.0
-      - GIT_CLIFF_CONFIG=cliff.toml
+        INITIAL_TAG_FALLBACK: 1.0.0
+        GIT_CLIFF_CONFIG: cliff.toml
       commands:
         # Fix Git ownership issues in CI
         - git config --global --add safe.directory "$PWD"
