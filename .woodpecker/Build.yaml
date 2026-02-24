@@ -37,7 +37,7 @@ steps:
     commands:
       # 3. FIX: Ensure Git recognizes the directory and has all tags
       - git config --global --add safe.directory "$PWD"
-      - git fetch --tags
+      - sleep 3600
       - chmod +x git-cliff.sh
       - ./git-cliff.sh
 
