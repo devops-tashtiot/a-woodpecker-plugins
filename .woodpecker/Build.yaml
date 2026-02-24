@@ -13,6 +13,11 @@ when:
         - plugins/**
 
 steps:
+  - name: Extract plugin directories
+    image: alpine:latest
+    commands:
+      # This creates the clean list: plugins/harel, plugins/netanel
+      - ls
   - name: Get changed files
     image: docker.io/netanelzucaim123/changed-files:latest
     settings:
