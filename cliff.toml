@@ -1,48 +1,40 @@
-[bump]
-# The initial version to use if no tags are found
-initial_tag = "1.0.0"
 [changelog]
-# changelog header
+# Styled header with a visual separator
 header = """
-# Changelog\n
-All notable changes to this plugin will be documented in this file.\n
+# 📖 Changelog\n
+All notable changes to this plugin are documented below.\n
+---
 """
-# template for the changelog body
+
+# Styled body with emojis and clickable commit hashes
 body = """
 {% if version %}\
-    ## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+    ## 🚀 [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
 {% else %}\
-    ## [unreleased]
+    ## 🧪 [unreleased]
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
-    ### {{ group | upper_first }}
+    ### {{ group }}
     {% for commit in commits %}
-        - {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message | upper_first }}\
+        - {{ commit.message | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}]({{ commit.id }}))\
     {% endfor %}
 {% endfor %}\n
 """
-# remove the leading and trailing whitespace from the template
 trim = true
 
 [git]
-# parse aspects of the git log
 conventional_commits = true
 filter_unconventional = false
 split_commits = false
-# regex for parsing conventional commits
+
+# Styled groups with Emojis for better scannability
 commit_parsers = [
-    { message = "^feat", group = "Features" },
-    { message = "^fix", group = "Bug Fixes" },
-    { message = "^doc", group = "Documentation" },
-    { message = "^perf", group = "Performance" },
-    { message = "^refactor", group = "Refactor" },
-    { message = "^style", group = "Styling" },
-    { message = "^test", group = "Testing" },
-    { message = "^chore\\(release\\): prepare for", skip = true },
-    { message = "^chore", group = "Miscellaneous Tasks" },
-    { body = ".*", group = "Other" },
+    { message = ".*!", group = "⚠️ Breaking Changes" },
+    { body = "BREAKING CHANGE", group = "⚠️ Breaking Changes" },
+    { message = "^feat", group = "✨ Features" },
+    { message = "^fix", group = "🐛 Fixes" },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = ".*", group = "🛠️ Other" },
 ]
-# protect breaking changes from being skipped due to matching a skipping commit_parser
 filter_commits = false
-# glob patterns for matching git tags (looks for digits instead of 'v')
 tag_pattern = "[0-9]*"
