@@ -1,1 +1,1 @@
-plugins/docs2confluence
+plugins/changed-files
