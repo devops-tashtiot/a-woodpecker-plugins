@@ -1,72 +1,60 @@
-  when:
-    - event: push
-      branch:
-        include: [main]
-      paths:
-        include:
-          - plugins/**
-    
+# 1. FIX: Fetch full history so git-cliff can see previous commits/tags
+clone:
+  git:
+    image: alpine/git
+    depth: 0
 
-  steps:
-    - name: Get changed files
-      image: docker.io/netanelzucaim123/changed-files:latest
-      settings:
-        output_file: changedFiles.txt
-        output_type: dirs
-        folder_depth: 2
+when:
+  - event: push
+    branch:
+      include: [main]
+    paths:
+      include:
+        - plugins/**
 
-    - name: Extract plugin directories
-      image: alpine:latest
-      commands:
-        - grep '^plugins/' changedFiles.txt | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
+steps:
+  - name: Get changed files
+    image: docker.io/netanelzucaim123/changed-files:latest
+    settings:
+      output_file: changedFiles.txt
+      output_type: dirs
+      folder_depth: 2
 
-    - name: Generate Versions and Changelogs
-      image: ghcr.io/orhun/git-cliff/git-cliff:latest
-      environment:
-        INITIAL_TAG_FALLBACK: 1.0.0
-        GIT_CLIFF_CONFIG: cliff.toml
-        INPUT_FILE: changedFiles.txt
-      commands:
-        # Make script executable and run it
-        - chmod +x git-cliff.sh
-        - ./git-cliff.sh
-      #when:
-      #  branch: main
-     #   event: push
-    #- name: Validate Commit Messages
-    #  image: node:lts
-    #  commands:
-    #    - npm install conventional-commits-parser
-    #    - node .github/scripts/validate-commits.js
+  - name: Extract plugin directories
+    image: alpine:latest
+    commands:
+      # This creates the clean list: plugins/harel, plugins/netanel
+      - grep '^plugins/' changedFiles.txt | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
+      - echo "Directories to process:" && cat changed_folders.txt
 
+  - name: Generate Versions and Changelogs
+    image: ghcr.io/orhun/git-cliff/git-cliff:latest
+    environment:
+      INITIAL_TAG_FALLBACK: 1.0.0
+      GIT_CLIFF_CONFIG: cliff.toml
+      # 2. FIX: Ensure this matches the filename from the step above
+      CHANGED_FOLDERS_FILE: changed_folders.txt
+    commands:
+      # 3. FIX: Ensure Git recognizes the directory and has all tags
+      - git config --global --add safe.directory "$PWD"
+      - git fetch --tags
+      - chmod +x git-cliff.sh
+      - ./git-cliff.sh
 
-#    - name: Build images
-#      image: docker.io/netanelzucaim123/kaniko-monorepo:latest
-#      settings:
-#        registry: docker.io
-#        username:
-#          from_secret: DOCKER_REG_USERNAME
-#        password: 
-#          from_secret: DOCKER_REG_PASSWORD
-#        repo: netanelzucaim123
-#        changed_file: changed_folders.txt
-
-    - name: Push changes to Git
-      image: alpine/git
-      commands:
-        - git config --global user.email "ci-bot@example.com"
-        - git config --global user.name "CI Bot"
-        - git add -A
-        - |
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update VERSION and CHANGELOG.md [ci skip]"
-            git push origin HEAD:main
-          else
-            echo "No changes to commit."
-          fi
-      environment:
-        GIT_AUTH_TOKEN: 1f6f2c2197b4690b6dd0039132b9e97c52198aff
-      when:
-        branch: main
-        event: push
-    
+  - name: Push changes to Git
+    image: alpine/git
+    commands:
+      - git config --global user.email "ci-bot@example.com"
+      - git config --global user.name "CI Bot"
+      # Using a more modern push syntax
+      - git add -A
+      - |
+        if ! git diff --cached --quiet; then
+          git commit -m "chore(release): update VERSION and CHANGELOG.md [skip ci]"
+          git push origin HEAD:main
+        else
+          echo "No changes to commit."
+        fi
+    environment:
+      # Use a secret for this in production!
+      GIT_AUTH_TOKEN: 1f6f2c2197b4690b6dd0039132b9e97c52198aff
