@@ -36,7 +36,6 @@ steps:
       CHANGED_FOLDERS_FILE: changed_folders.txt
     commands:
       # 3. FIX: Ensure Git recognizes the directory and has all tags
-      - git config --global --add safe.directory "$PWD"
       - sleep 3600
       - chmod +x git-cliff.sh
       - ./git-cliff.sh
