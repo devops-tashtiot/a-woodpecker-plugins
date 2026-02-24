@@ -15,11 +15,17 @@
         output_type: dirs
         folder_depth: 2
 
+    - name: Extract plugin directories
+      image: alpine:latest
+      commands:
+        - grep '^plugins/' changedFiles.txt | cut -d '/' -f 1,2 | sort -u > changed_folders.txt
+
     - name: Generate Versions and Changelogs
       image: ghcr.io/orhun/git-cliff/git-cliff:latest
       environment:
         INITIAL_TAG_FALLBACK: 1.0.0
         GIT_CLIFF_CONFIG: cliff.toml
+        INPUT_FILE: changedFiles.txt
       commands:
         # Make script executable and run it
         - chmod +x git-cliff.sh

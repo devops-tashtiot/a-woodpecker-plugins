@@ -34,9 +34,6 @@ if [ ! -f "$INPUT_FILE" ]; then
     exit 0
 fi
 
-# Ensure Git works correctly in CI environments (prevents ownership issues)
-git config --global --add safe.directory "$PWD"
-
 while IFS= read -r dir; do
     # Cleanup directory path string
     dir=$(echo "$dir" | tr -d '"\r' | xargs)
