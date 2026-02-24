@@ -21,8 +21,6 @@
         INITIAL_TAG_FALLBACK: 1.0.0
         GIT_CLIFF_CONFIG: cliff.toml
       commands:
-        # Fix Git ownership issues in CI
-        - git config --global --add safe.directory "$PWD"
         # Make script executable and run it
         - chmod +x git-cliff.sh
         - ./git-cliff.sh
