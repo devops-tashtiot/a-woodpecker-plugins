@@ -1,3 +1,6 @@
+[bump]
+# The initial version to use if no tags are found
+initial_tag = "1.0.0"
 [changelog]
 # changelog header
 header = """
@@ -43,6 +46,3 @@ commit_parsers = [
 filter_commits = false
 # glob patterns for matching git tags (looks for digits instead of 'v')
 tag_pattern = "[0-9]*"
-[bump]
-# The initial version to use if no tags are found
-initial_version = "1.0.0"
