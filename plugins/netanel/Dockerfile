@@ -4,9 +4,3 @@ FROM busybox:latest
 ENTRYPOINT ["/aeqdeppeeeeedrrrgigidsdddfweffffwefsfesfd/plugin.sh"]
 
 
-
-
-
-
-
-earwa
