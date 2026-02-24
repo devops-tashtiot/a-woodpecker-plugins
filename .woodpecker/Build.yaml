@@ -28,7 +28,7 @@ steps:
       - echo "Directories to process:" && cat changed_folders.txt
 
   - name: Generate Versions and Changelogs
-    image: ghcr.io/orhun/git-cliff/git-cliff:latest
+    image: docker.io/netanelzucaim123/git-cliff:latest
     environment:
       INITIAL_TAG_FALLBACK: 1.0.0
       GIT_CLIFF_CONFIG: cliff.toml
