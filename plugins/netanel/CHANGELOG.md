@@ -1,3 +1,7 @@
+## [ ERROR git_cliff                  > Semver error: `unexpected character 'a' after patch version number`] - 2026-02-24
+
+## [1.0.1] - 2026-02-24
+
 # [1.4.0](https://github.com/netanelzucaim/semantic/compare/netanel-v1.3.0...netanel-v1.4.0) (2026-02-12)
 
 
