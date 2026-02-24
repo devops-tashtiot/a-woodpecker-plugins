@@ -1,24 +1,12 @@
-## [1.0.5] - 2026-02-24
+## [1.1.0] - 2026-02-24
 
-### Other
+### Features
 
-- Add new line
+- Adding
 
-## [1.0.4] - 2026-02-24
+## [1.0.0] - 2026-02-24
 
-### Other
+### Features
 
-- Add new line
-
-## [1.0.3] - 2026-02-24
-
-### Other
-
-- Add new line
-
-## [1.0.2] - 2026-02-24
-
-### Other
-
-- Add new line
+- Adding
 

@@ -16,7 +16,6 @@ while IFS= read -r dir; do
         CONF_INITIAL_TAG=$(git-cliff --print-config | grep -oP 'initial_tag\s*=\s*"\K[^"]+' || echo "1.0.0")
         
         echo "Creating initial CHANGELOG.md with version $CONF_INITIAL_TAG..."
-        
         # USE --output here because the file likely doesn't exist
         git-cliff HEAD~1..HEAD \
             --tag "$CONF_INITIAL_TAG" \
