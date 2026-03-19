@@ -38,24 +38,18 @@ steps:
       - python3 release.py
 
   - name: Push changelogs to Git
-    image: netanelzucaim123/python-git-cliff:latest
-    environment:
-      GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
-      GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
+    image: alpine/git
     commands:
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
-      - git add -A
-      - git remote set-url $GITEA_URL
+      - git config --global safe.directory '*'
+      - git remote set-url origin "http://ci-bot:3935ecfe08a1f2baf043bde1a317b337f60650d0@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
+      - git add -- '*/CHANGELOG.md'
       - |
         if ! git diff --cached --quiet; then
           git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
-          git push origin HEAD:main
+          git push --force origin HEAD:main
         else
           echo "No changelog changes to commit."
         fi
-
-
-
-
-
+      - git push --force --tags origin
