@@ -21,7 +21,7 @@ header = """
 """
 body = """
 {% if version %}\
-    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+    ## [{{ version | trim_start_matches(pat="v") }}](http://localhost:3000/netanelzucaim/semantic/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
 {% else %}\
     ## [unreleased]
 {% endif %}\
