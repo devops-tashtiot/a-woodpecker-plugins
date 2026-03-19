@@ -25,13 +25,12 @@ steps:
         echo ">>> PR Body: $PR_BODY"
 
   - name: Run release
-    image: python:3.12-alpine
+    image: 10.103.98.205:5000/release-runner:latest
     environment:
       PLUGIN_MONOREPO_PATH: "."
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
-      - apk add --no-cache git git-cliff
       - export PR_BODY="$(cat /tmp/pr_body.txt)"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.sh
