@@ -24,15 +24,18 @@ for entry in "${TEST_CASES[@]}"; do
 
   echo "==> $branch"
 
-  # Create branch (ignore error if already exists)
+  # Delete branch if it exists, then recreate fresh from main
+  curl -sf -X DELETE "$API/branches/$branch" \
+    -H "$AUTH" > /dev/null 2>&1 || true
   curl -sf -X POST "$API/branches" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"new_branch_name\":\"$branch\",\"old_branch_name\":\"$BASE_BRANCH\"}" \
-    > /dev/null 2>&1 || true
+    > /dev/null
 
-  # Add a trigger file so the branch has a commit ahead of main
-  trigger_file=".triggers/${branch//\//-}"
-  content=$(echo -n "$branch" | base64)
+  # Add a trigger file with random suffix so the branch can be re-created each run
+  rand=$(head -c 6 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 6)
+  trigger_file=".triggers/${branch//\//-}-${rand}"
+  content=$(echo -n "$branch-$rand" | base64)
   curl -sf -X POST "$API/contents/$trigger_file" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"message\":\"chore: trigger for $branch\",\"content\":\"$content\",\"branch\":\"$branch\"}" \

@@ -21,7 +21,7 @@ steps:
           "$GITEA_URL/api/v1/repos/$CI_REPO/pulls?state=closed&limit=50" \
           | grep -o '"body":"[^"]*"' | head -1 \
           | sed 's/"body":"//;s/"$//')
-        echo "$PR_BODY" > /workspace/pr_body.txt
+        echo "$PR_BODY" > /tmp/pr_body.txt
         echo ">>> PR Body: $PR_BODY"
 
   - name: Run release
@@ -32,7 +32,7 @@ steps:
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - apk add --no-cache git git-cliff
-      - export PR_BODY="$(cat /workspace/pr_body.txt)"
+      - export PR_BODY="$(cat /tmp/pr_body.txt)"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.sh
 
