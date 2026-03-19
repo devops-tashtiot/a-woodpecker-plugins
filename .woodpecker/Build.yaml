@@ -35,7 +35,6 @@ steps:
     commands:
       - export PR_BODY="$(cat pr_body.txt)"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
-      - sleep 2600
       - python3 release.py
 
   - name: Push changelogs to Git
