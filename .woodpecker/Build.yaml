@@ -37,13 +37,11 @@ steps:
 
   - name: Push changelogs to Git
     image: alpine/git
-    environment:
-      GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
     commands:
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
-      - git remote set-url origin "http://ci-bot:${GITEA_TOKEN}@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
+      - git remote set-url origin "http://ci-bot:3935ecfe08a1f2baf043bde1a317b337f60650d0@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
       - git add -- '*/CHANGELOG.md'
       - |
         if ! git diff --cached --quiet; then
