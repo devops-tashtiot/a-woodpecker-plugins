@@ -42,7 +42,9 @@ steps:
     commands:
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
-      - git add -A
+      - git config --global safe.directory '*'
+      - git remote set-url origin "http://ci-bot:${GIT_AUTH_TOKEN}@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
+      - git add -- '*/CHANGELOG.md'
       - |
         if ! git diff --cached --quiet; then
           git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
