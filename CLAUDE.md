@@ -15,9 +15,19 @@ This is a **Stateless Monorepo Release Orchestrator**. It automates semantic ver
 PR_BODY="feat(nati): add dashboard" PLUGIN_MONOREPO_PATH="." python3 release.py
 ```
 
+### Dry-run (describe what would be released, no tags created)
+```bash
+PR_BODY="feat(nati): add dashboard" PLUGIN_MONOREPO_PATH="." python3 release.py --describe
+```
+
 ### Run tests
 ```bash
 python test_release.py
+```
+
+### Run Docker integration tests
+```bash
+./test_release_docker.sh
 ```
 
 ### Create test PRs in Gitea (for CI validation)

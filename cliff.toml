@@ -1,16 +1,19 @@
 [bump]
 features_always_bump_minor = true
 breakage_always_bump_major = true
-initial_tag = "1.0.0"
+custom_major_increment_regex = "^breaking"
 
 [git]
-# Matches Conventional Commits: feat, fix, chore, etc.
 conventional_commits = true
 filter_unconventional = true
-# Crucial: Only look at the path provided by the script
-limit_commits_to_path = true 
-# Matches tags like: base-argo-v1.2.3 or nati-v2.0.1
+limit_commits_to_path = true
 tag_pattern = "[a-zA-Z0-9-]+-v[0-9]+\\.[0-9]+\\.[0-9]+$"
+commit_parsers = [
+  { message = "^breaking", group = "Breaking Changes", bump_type = "major" },
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = ".*", skip = true },
+]
 
 [changelog]
 header = """

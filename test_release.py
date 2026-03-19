@@ -1,17 +1,19 @@
 import os
 import re
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
 
 # release.sh is Python despite the .sh extension
 import types
 
-_src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release.sh")
+_src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release.py")
 release_module = types.ModuleType("release")
 with open(_src_path) as _f:
     exec(compile(_f.read(), _src_path, "exec"), release_module.__dict__)
 
 parse_pr_body = release_module.parse_pr_body
+expand_all_scope = release_module.expand_all_scope
+discover_all_scopes = release_module.discover_all_scopes
 release = release_module.release
 
 
@@ -117,12 +119,57 @@ class TestParsePrBody(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# expand_all_scope tests
+# ---------------------------------------------------------------------------
+
+class TestExpandAllScope(unittest.TestCase):
+
+    def test_all_expands_to_each_scope(self):
+        result = expand_all_scope({"feat(all): upgrade"}, ["plugins/a", "plugins/b"])
+        self.assertEqual(result, {"feat(plugins/a): upgrade", "feat(plugins/b): upgrade"})
+
+    def test_breaking_all_expands(self):
+        result = expand_all_scope({"breaking(all): remove api"}, ["plugins/a", "plugins/b"])
+        self.assertEqual(result, {
+            "breaking(plugins/a): remove api",
+            "breaking(plugins/b): remove api",
+        })
+
+    def test_bang_notation_preserved(self):
+        result = expand_all_scope({"feat(all)!: big change"}, ["scope/x"])
+        self.assertEqual(result, {"feat(scope/x)!: big change"})
+
+    def test_non_all_passes_through_unchanged(self):
+        msgs = {"feat(nati): x", "fix(base/argo): y"}
+        self.assertEqual(expand_all_scope(msgs, ["ignored"]), msgs)
+
+    def test_empty_all_scopes_removes_all_entry(self):
+        """feat(all) with no known scopes → empty set (release() will print no-op)."""
+        result = expand_all_scope({"feat(all): x"}, [])
+        self.assertEqual(result, set())
+
+    def test_mixed_all_and_specific(self):
+        result = expand_all_scope({"feat(all): x", "fix(nati): y"}, ["plugins/a"])
+        self.assertEqual(result, {"feat(plugins/a): x", "fix(nati): y"})
+
+    def test_no_all_scope_skips_discovery(self):
+        """If no 'all' in messages, all_scopes list is irrelevant — messages returned as-is."""
+        msgs = {"feat(nati): x"}
+        self.assertIs(expand_all_scope(msgs, ["anything"]), msgs)
+
+
+# ---------------------------------------------------------------------------
 # release() integration tests (filesystem + subprocess mocked)
 # ---------------------------------------------------------------------------
 
 class TestRelease(unittest.TestCase):
 
-    def _run(self, pr_body, dirs_that_exist, cliff_returncode=0, cliff_stderr="", cliff_stdout="Bumped to 1.1.0"):
+    def _run(self, pr_body, dirs_that_exist, cliff_returncode=0, cliff_stderr="",
+             cliff_stdout="Bumped to 1.1.0", walk_dirs=None):
+        """
+        walk_dirs: list of (dirpath, dirnames, filenames) tuples for os.walk mock.
+                   Defaults to empty walk (no leaf dirs discovered).
+        """
         mock_result = MagicMock()
         mock_result.returncode = cliff_returncode
         mock_result.stdout = cliff_stdout
@@ -133,16 +180,20 @@ class TestRelease(unittest.TestCase):
             "PLUGIN_MONOREPO_PATH": "/repo",
         }
 
+        walk_result = walk_dirs if walk_dirs is not None else []
+
         with patch.dict(os.environ, env), \
              patch("os.path.exists", return_value=True), \
              patch("os.path.isdir", side_effect=lambda p: any(p.endswith(d) for d in dirs_that_exist)), \
+             patch("os.walk", return_value=iter(walk_result)), \
+             patch("os.path.relpath", side_effect=lambda p, base: p.replace(base + "/", "") if p != base else "."), \
              patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
             release()
             return mock_cmd
 
     def test_single_component_calls_git_cliff(self):
         mock_cmd = self._run("feat(nati): add dashboard", dirs_that_exist=["nati"])
-        self.assertEqual(mock_cmd.call_count, 1)
+        self.assertEqual(mock_cmd.call_count, 4)
         call_arg = mock_cmd.call_args[0][0]
         self.assertIn("--include-path 'nati/**/*'", call_arg)
         self.assertIn("feat(nati): add dashboard", call_arg)
@@ -152,15 +203,15 @@ class TestRelease(unittest.TestCase):
             "feat(base/argo, nati, plugins/git): global auth update",
             dirs_that_exist=["base/argo", "nati", "plugins/git"],
         )
-        self.assertEqual(mock_cmd.call_count, 3)
+        self.assertEqual(mock_cmd.call_count, 12)
 
     def test_missing_directory_is_skipped(self, capsys=None):
         mock_cmd = self._run(
             "feat(nati): add dashboard\nfix(missing-dir): something",
             dirs_that_exist=["nati"],
         )
-        # Only nati was a real dir → only one cliff call
-        self.assertEqual(mock_cmd.call_count, 1)
+        # Only nati was a real dir → 4 calls for that component
+        self.assertEqual(mock_cmd.call_count, 4)
 
     def test_empty_pr_body_does_nothing(self):
         mock_cmd = self._run("", dirs_that_exist=[])
@@ -174,7 +225,8 @@ class TestRelease(unittest.TestCase):
             cliff_returncode=1,
             cliff_stderr="some git-cliff error",
         )
-        self.assertEqual(mock_cmd.call_count, 1)
+        # git tag -l, git cliff --bumped-version, git tag (fails → continue)
+        self.assertEqual(mock_cmd.call_count, 3)
 
     def test_tag_slug_uses_hyphens(self):
         mock_cmd = self._run(
@@ -191,6 +243,55 @@ class TestRelease(unittest.TestCase):
         )
         call_arg = mock_cmd.call_args[0][0]
         self.assertIn("base-infra-networking-firewall-v", call_arg)
+
+    def test_feat_all_expands_via_walk(self):
+        """feat(all) discovers leaf dirs from os.walk and releases each."""
+        # Simulate: /repo/plugins/a (leaf), /repo/plugins/b (leaf)
+        walk_result = [
+            ("/repo", ["plugins"], []),
+            ("/repo/plugins", ["a", "b"], []),
+            ("/repo/plugins/a", [], ["file.sh"]),
+            ("/repo/plugins/b", [], ["file.sh"]),
+        ]
+        mock_cmd = self._run(
+            "feat(all): global upgrade",
+            dirs_that_exist=["plugins/a", "plugins/b"],
+            walk_dirs=walk_result,
+        )
+        # 2 scopes × 4 calls each
+        self.assertEqual(mock_cmd.call_count, 8)
+
+    def test_feat_all_no_leaf_dirs_does_nothing(self):
+        """feat(all) with no discoverable dirs → no releases."""
+        mock_cmd = self._run(
+            "feat(all): global upgrade",
+            dirs_that_exist=[],
+            walk_dirs=[("/repo", [], [])],
+        )
+        mock_cmd.assert_not_called()
+
+    def test_scope_deduplication_breaking_wins_over_feat(self):
+        """feat + breaking for same scope → only breaking is processed (one tag)."""
+        mock_cmd = self._run(
+            "feat(nati): add thing\nbreaking(nati): remove api",
+            dirs_that_exist=["nati"],
+        )
+        # Only 1 scope processed → 4 calls
+        self.assertEqual(mock_cmd.call_count, 4)
+        # Every --with-commit call must use 'breaking', not 'feat'
+        for call in mock_cmd.call_args_list:
+            arg = call[0][0]
+            if "--with-commit" in arg:
+                self.assertIn("breaking(nati)", arg)
+                self.assertNotIn("feat(nati)", arg)
+
+    def test_scope_deduplication_two_different_scopes_both_process(self):
+        """feat(a) + breaking(b) → both processed (different scopes)."""
+        mock_cmd = self._run(
+            "feat(nati): add thing\nbreaking(base/argo): remove api",
+            dirs_that_exist=["nati", "base/argo"],
+        )
+        self.assertEqual(mock_cmd.call_count, 8)
 
 
 if __name__ == "__main__":
