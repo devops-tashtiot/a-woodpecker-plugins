@@ -9,20 +9,3 @@ ENTRYPOINT ["/aeqdeppeeeeedrrrgigdddidsdddfwefwefsfesfd/plugin.sh"]
 
 
 
-#check
-
-#check
-
-
-#check
-
-#check
-
-
-
-
-
-
-
-
-
