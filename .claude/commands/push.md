@@ -25,10 +25,4 @@ Run the following steps in order inside the `semantic/` directory:
    ```
    git push origin main
    ```
-
-6. Run the test PR creation script:
-   ```
-   bash create-test-prs.sh
-   ```
-
 After each step, report the output to the user. If any step fails, stop and explain the error.

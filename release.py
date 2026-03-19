@@ -2,8 +2,6 @@ import subprocess
 import re
 import os
 
-BUMP_PRIORITY = {'breaking': 3, 'feat': 2, 'fix': 1}
-
 def run_command(command):
     """Executes shell commands and captures output."""
     return subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -26,45 +24,15 @@ def parse_pr_body(body):
             msg_type, raw_scopes, breaking, description = match.groups()
             for scope in raw_scopes.split(','):
                 release_set.add(f"{msg_type.lower()}({scope.strip()}){breaking}: {description.strip()}")
-
+    
     return release_set
-
-def discover_all_scopes(root_path):
-    """Walk root_path and return all leaf directories (no subdirs), excluding hidden/system dirs."""
-    excluded = {'.git', '.claude', '.woodpecker', '__pycache__'}
-    scopes = []
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in excluded]
-        rel = os.path.relpath(dirpath, root_path)
-        if rel != '.' and not dirnames:
-            scopes.append(rel.replace('\\', '/'))
-    return scopes
-
-def expand_all_scope(messages, all_scopes):
-    """Replace entries with scope 'all' with one entry per scope in all_scopes."""
-    if not any(re.search(r'\(all\)', m) for m in messages):
-        return messages
-    expanded = set()
-    for msg in messages:
-        m = re.match(r'^([a-z]+)\(all\)(!?):\s*(.*)', msg)
-        if m:
-            msg_type, breaking, description = m.groups()
-            for scope in all_scopes:
-                expanded.add(f"{msg_type}({scope}){breaking}: {description}")
-        else:
-            expanded.add(msg)
-    return expanded
-
-def _bump_rank(msg):
-    m = re.match(r'^([a-z]+)', msg)
-    return BUMP_PRIORITY.get(m.group(1) if m else '', 0)
 
 def release():
     # Load Environment Variables
     pr_body = os.getenv("PR_BODY", "")
     root_path = os.getenv("PLUGIN_MONOREPO_PATH", ".")
     global_toml = os.path.join(root_path, "cliff.toml")
-
+    
     if not os.path.exists(global_toml):
         print(f">>> ERROR: Global cliff.toml not found at {global_toml}")
         return
@@ -75,38 +43,26 @@ def release():
         print(">>> No Conventional Commits detected in PR Body.")
         return
 
-    # 2. Expand 'all' scope — auto-discover leaf dirs under root_path
-    messages = expand_all_scope(messages, discover_all_scopes(root_path))
-    if not messages:
-        print(">>> No Conventional Commits detected in PR Body.")
-        return
-
-    # 3. Process each component — highest bump priority first, one release per scope
-    seen_scopes = set()
-    for full_msg in sorted(messages, key=_bump_rank, reverse=True):
+    # 2. Process each component
+    for full_msg in messages:
+        # Extract the relative path from the scope: (base/argo) -> base/argo
         path_match = re.search(r"\(([^)]+)\)", full_msg)
-        if not path_match:
-            continue
-
+        if not path_match: continue
+            
         rel_path = path_match.group(1)
-
-        # One release per scope — skip lower-priority duplicates
-        if rel_path in seen_scopes:
-            continue
-        seen_scopes.add(rel_path)
-
         full_path = os.path.normpath(os.path.join(root_path, rel_path))
-
+        
         if not os.path.isdir(full_path):
             print(f">>> SKIP: Directory '{rel_path}' does not exist.")
             continue
-
-        # 4. Create unique Tag Slug: "base/argo" -> "base-argo"
+        
+        # 3. Create unique Tag Slug: "base/argo" -> "base-argo"
         path_slug = rel_path.replace("/", "-").replace("\\", "-")
 
         print(f"--- Processing: {path_slug} ---")
 
-        # 5. Check if this component has ever been tagged
+
+        # 4. Check if this component has ever been tagged
         existing_tags = run_command(f"git tag -l '{path_slug}-v*' --sort=-version:refname")
         latest_tag = existing_tags.stdout.strip().splitlines()[0] if existing_tags.stdout.strip() else None
 
@@ -132,8 +88,10 @@ def release():
         if tag_res.returncode != 0:
             print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
             continue
-
-        # Generate changelog entry
+        # Generate changelog entry:
+        # --unreleased  → only the virtual --with-commit (HEAD is already tagged, 0 real unreleased commits)
+        # --tag '{new_tag}' → label those commits as the new version (not [unreleased])
+        # --prepend/--output → accumulate entries in the file
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
         cliff_cmd = (
