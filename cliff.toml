@@ -1,40 +1,31 @@
-[changelog]
-# Styled header with a visual separator
-header = """
-# 📖 Changelog\n
-All notable changes to this plugin are documented below.\n
----
-"""
+[bump]
+features_always_bump_minor = true
+breakage_always_bump_major = true
+initial_tag = "1.0.0"
 
-# Styled body with emojis and clickable commit hashes
+[git]
+# Matches Conventional Commits: feat, fix, chore, etc.
+conventional_commits = true
+filter_unconventional = true
+# Crucial: Only look at the path provided by the script
+limit_commits_to_path = true 
+# Matches tags like: base-argo-v1.2.3 or nati-v2.0.1
+tag_pattern = "[a-zA-Z0-9-]+-v[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+[changelog]
+header = """
+# Changelog\n
+"""
 body = """
 {% if version %}\
-    ## 🚀 [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
 {% else %}\
-    ## 🧪 [unreleased]
+    ## [unreleased]
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
-    ### {{ group }}
+    ### {{ group | upper_first }}
     {% for commit in commits %}
-        - {{ commit.message | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}]({{ commit.id }}))\
+        * {{ commit.message | upper_first }}
     {% endfor %}
 {% endfor %}\n
 """
-trim = true
-
-[git]
-conventional_commits = true
-filter_unconventional = false
-split_commits = false
-
-# Styled groups with Emojis for better scannability
-commit_parsers = [
-    { message = ".*!", group = "⚠️ Breaking Changes" },
-    { body = "BREAKING CHANGE", group = "⚠️ Breaking Changes" },
-    { message = "^feat", group = "✨ Features" },
-    { message = "^fix", group = "🐛 Fixes" },
-    { message = "^chore\\(release\\)", skip = true },
-    { message = ".*", group = "🛠️ Other" },
-]
-filter_commits = false
-tag_pattern = "[0-9]*"
