@@ -154,7 +154,7 @@ echo ""
 # TC8: Duplicate lines deduplicated
 echo "TC8: Duplicate PR lines -- processed only once"
 out=$(run_release "$(printf 'feat(plugins/harel): add thing\nfeat(plugins/harel): add thing')")
-assert_tag_exists "git tag plugins-harel-v1.2.0 exists" "plugins-harel-v1.2.0"
+assert_tag_exists "git tag plugins-harel-v2.1.0 exists" "plugins-harel-v2.1.0"
 count=$(echo "$out" | grep -c "SUCCESS.*plugins-harel" || true)
 if [ "$count" -eq 1 ]; then
   echo "  PASS: processed exactly once (count=$count)"
