@@ -1,12 +1,12 @@
 clone:
   git:
-    image: alpine/git
-    depth: 0
+    image: woodpeckerci/plugin-git
+    settings:
+      depth: 0
 
 when:
   - event: push
-    branch:
-      include: [main]
+    branch: main
 
 steps:
   - name: Fetch PR body
