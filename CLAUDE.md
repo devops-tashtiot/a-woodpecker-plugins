@@ -8,9 +8,11 @@ This is a **Stateless Monorepo Release Orchestrator**. It automates semantic ver
 
 ## Commands
 
+
+
 ### Run the release orchestrator
 ```bash
-PR_BODY="feat(nati): add dashboard" PLUGIN_MONOREPO_PATH="." python3 release.sh
+PR_BODY="feat(nati): add dashboard" PLUGIN_MONOREPO_PATH="." python3 release.py
 ```
 
 ### Run tests
@@ -27,7 +29,7 @@ python test_release.py
 
 ### Core Flow
 
-1. **PR body** → parsed by `release.sh` (a Python script despite `.sh` extension)
+1. **PR body** → parsed by `release.py`
 2. Conventional commit lines matching `^([a-z]+)\(([^)]+)\):\s*(.*)` are extracted
 3. Multi-scope commits are exploded: `feat(a, b): msg` → `{"feat(a): msg", "feat(b): msg"}`
 4. A Python `set` deduplicates entries
@@ -48,7 +50,7 @@ Forward slashes in scopes are replaced with hyphens to form the tag prefix.
 
 ### Key Files
 
-- `release.sh` — main orchestrator (Python, not shell)
+- `release.py` — main orchestrator (Python, not shell)
 - `test_release.py` — 17 unit tests covering parsing, slug logic, explosion, edge cases
 - `cliff.toml` — global git-cliff config: `feat` → minor bump, breaking → major bump, `initial_tag = "1.0.0"`, `limit_commits_to_path = true`
 - `.woodpecker/Build.yaml` — CI pipeline (Woodpecker): clone → fetch PR body from Gitea API → run release → push changelogs

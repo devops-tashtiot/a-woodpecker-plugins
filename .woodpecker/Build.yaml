@@ -25,7 +25,7 @@ steps:
         echo ">>> PR Body: $PR_BODY"
 
   - name: Run release
-    image: 10.103.98.205:5000/release-runner:latest
+    image: netanelzucaim123/python-git-cliff:latest
     environment:
       PLUGIN_MONOREPO_PATH: "."
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
@@ -33,7 +33,7 @@ steps:
     commands:
       - export PR_BODY="$(cat /tmp/pr_body.txt)"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
-      - python3 release.sh
+      - python3 release.py
 
   - name: Push changelogs to Git
     image: alpine/git
