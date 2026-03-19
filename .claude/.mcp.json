@@ -1,0 +1,15 @@
+{
+  "enableAllProjectMcpServers": true,
+  "mcpServers": 
+  {
+   
+    "gitea": {
+      "command": "/home/netanelzucaim/.local/bin/gitea-mcp",
+      "args": ["stdio"],
+      "env": {
+        "GITEA_URL": "http://localhost:3000",
+        "GITEA_TOKEN": "3935ecfe08a1f2baf043bde1a317b337f60650d0"
+      }
+    }
+  }
+}
