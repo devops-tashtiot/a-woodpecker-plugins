@@ -3,6 +3,7 @@ clone:
     image: woodpeckerci/plugin-git
     settings:
       depth: 0
+      tags: true
 
 when:
   - event: push
