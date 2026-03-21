@@ -37,21 +37,25 @@ steps:
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - |
-        export PR_BODY="$(cat pr_body.txt)"
-        # Use a different sed syntax to avoid backslash hell
-        # This looks for the literal string '\' followed by 'n'
-        sed -i 's/\\n/\n/g' pr_body.txt
-        
-        for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
-          # IMPORTANT: Use ^${var}= to find the line
-          # If Woodpecker is stripping ${var}, use this syntax:
-          val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
-          
-          if [ -n "$val" ]; then
-            export "$var=$val"
-            echo ">>> Overriding $var with: $val"
-          fi
-        done
+              # 1. Capture the body
+              export PR_BODY="$(cat pr_body.txt)"
+
+              # 2. Convert literal '\n' strings into real line breaks
+              # This makes PLUGIN_BASE start at the beginning of a new line
+              sed -i 's/\\n/\n/g' pr_body.txt
+
+              # 3. Extract using double-dollar for Woodpecker compatibility
+              for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
+                # We use $${var} so Woodpecker doesn't try to replace it itself
+                val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
+                
+                if [ -n "$val" ]; then 
+                  export "$var=$val"
+                  echo ">>> Successfully extracted $var=$val"
+                fi
+              done
+
+
       - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE SCOPE_EXCLUDE_REGEX=$SCOPE_EXCLUDE_REGEX"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.py
