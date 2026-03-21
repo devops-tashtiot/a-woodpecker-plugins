@@ -38,7 +38,7 @@ steps:
     commands:
       - |
         export PR_BODY="$(cat pr_body.txt)"
-        sed -i 's/\\n/\n/g' pr_body.txt
+        sed -i "s/\\n/\n/g" pr_body.txt
         for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
           val=$(grep -m 1 "^${var}=" pr_body.txt | cut -d= -f2-)
           if [ -n "$val" ]; then
