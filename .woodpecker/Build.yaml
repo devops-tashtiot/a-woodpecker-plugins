@@ -21,7 +21,7 @@ steps:
         curl -sf \
           -H "Authorization: token $GITEA_TOKEN" \
           "$GITEA_URL/api/v1/repos/$CI_REPO/pulls?state=closed&limit=50" \
-          > raw_prs.json
+          | tee raw_prs.json
         echo ">>> Fetched PR list"
 
   - name: Run release
