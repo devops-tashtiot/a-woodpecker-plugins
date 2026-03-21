@@ -17,14 +17,15 @@ steps:
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
+      - apk add --no-cache jq -q
       - |
         PR_BODY=$(curl -sf \
           -H "Authorization: token $GITEA_TOKEN" \
           "$GITEA_URL/api/v1/repos/$CI_REPO/pulls?state=closed&limit=50" \
-          | grep -o '"body":"[^"]*"' | head -1 \
-          | sed 's/"body":"//;s/"$//')
-        echo "$PR_BODY" > pr_body.txt
-        echo ">>> PR Body: $PR_BODY"
+          | jq -r '.[0].body // ""')
+        printf '%s' "$PR_BODY" > pr_body.txt
+        echo ">>> PR Body:"
+        cat pr_body.txt
 
   - name: Run release
     image: netanelzucaim123/python-git-cliff:latest
@@ -36,28 +37,17 @@ steps:
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
+      - export PR_BODY="$(cat pr_body.txt)"
       - |
-              # 1. Capture the body
-              export PR_BODY="$(cat pr_body.txt)"
-
-              # 2. Convert literal '\n' strings into real line breaks
-              # This makes PLUGIN_BASE start at the beginning of a new line
-              sed -i 's/\\n/\n/g' pr_body.txt
-
-              # 3. Extract using double-dollar for Woodpecker compatibility
-              for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
-                # We use $${var} so Woodpecker doesn't try to replace it itself
-                val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
-                
-                if [ -n "$val" ]; then 
-                  export "$var=$val"
-                  echo ">>> Successfully extracted $var=$val"
-                fi
-              done
-
-
+        for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
+          val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
+          if [ -n "$val" ]; then
+            export "$var=$val"
+            echo ">>> Override: $var=$val"
+          fi
+        done
       - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE SCOPE_EXCLUDE_REGEX=$SCOPE_EXCLUDE_REGEX"
-      - echo ">>> Running release for PR body:" && echo "$PR_BODY"
+      - echo ">>> Running release for PR body:" && cat pr_body.txt
       - python3 release.py
       - echo ">>> New tags:" && cat new_tags.txt || echo "No tags created"
 
