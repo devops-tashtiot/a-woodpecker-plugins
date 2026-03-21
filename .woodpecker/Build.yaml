@@ -36,13 +36,25 @@ steps:
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
-      - export PR_BODY="$(cat pr_body.txt)"
       - |
-        # Allow PR body to override config vars — lines like SCOPE_DEPTH=2, PLUGIN_BASE=./plugins, SCOPE_EXCLUDE_REGEX=^docs$
-        for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
-          val=$(grep "^${var}=" pr_body.txt | head -1 | cut -d= -f2-)
-          if [ -n "$val" ]; then export "$var=$val"; fi
-        done
+              # 1. Capture the raw PR body
+              export PR_BODY="$(cat pr_body.txt)"
+
+              # 2. Fix literal \n strings into actual new lines so grep can parse them
+              # (Crucial for Woodpecker/CI environments where PR bodies are often passed as single strings)
+              sed -i 's/\\n/\n/g' pr_body.txt
+
+              # 3. Extract overrides from the PR body
+              # Matches lines like PLUGIN_BASE=./plugins or SCOPE_DEPTH=2
+              for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
+                # Use -m 1 to stop at the first match and ensure we anchor to the start of the line (^)
+                val=$(grep -m 1 "^${var}=" pr_body.txt | cut -d= -f2-)
+                
+                if [ -n "$val" ]; then 
+                  export "$var=$val"
+                  echo ">>> Overriding $var with: $val"
+                fi
+              done
       - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE SCOPE_EXCLUDE_REGEX=$SCOPE_EXCLUDE_REGEX"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.py
