@@ -184,7 +184,9 @@ build_image() {
                 alias_tag="$(printf '%s' "${alias_tag}" | tr -d ' ')"
                 [ -z "${alias_tag}" ] && continue
                 destinations="${destinations} --destination=${image_base}:${alias_tag}"
-            done < <(printf '%s' "${aliases}" | tr ',' '\n')
+            done << ALIASES
+$(printf '%s' "${aliases}" | tr ',' '\n')
+ALIASES
         fi
     fi
 
