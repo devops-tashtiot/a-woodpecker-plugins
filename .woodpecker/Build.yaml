@@ -51,6 +51,7 @@ steps:
   - name: Push changelogs to Git
     image: alpine/git
     commands:
+      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
