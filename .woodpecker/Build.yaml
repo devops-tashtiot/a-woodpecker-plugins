@@ -37,25 +37,15 @@ steps:
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - |
-              # Capture the body
-              export PR_BODY="$(cat pr_body.txt)"
-              
-              # 1. Fix the newline strings
-              sed -i 's/\\n/\n/g' pr_body.txt
-              
-              # 2. Extract values using the variable name as the anchor
-              for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
-                # Use grep -m 1 with the variable name ${var}
-                val=$(grep -m 1 "^${var}=" pr_body.txt | cut -d= -f2-)
-                
-                if [ -n "$val" ]; then 
-                  export "$var=$val"
-                  echo ">>> Overriding $var with: $val"
-                fi
-              done
-              
-              # 3. Run the release
-              python3 release.py
+        export PR_BODY="$(cat pr_body.txt)"
+        sed -i 's/\\n/\n/g' pr_body.txt
+        for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
+          val=$(grep -m 1 "^${var}=" pr_body.txt | cut -d= -f2-)
+          if [ -n "$val" ]; then
+            export "$var=$val"
+            echo ">>> Overriding $var with: $val"
+          fi
+        done
       - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE SCOPE_EXCLUDE_REGEX=$SCOPE_EXCLUDE_REGEX"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.py
