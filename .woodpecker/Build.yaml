@@ -50,13 +50,25 @@ steps:
 
   - name: Push changelogs to Git
     image: alpine/git
+    environment:
+      PLUGIN_BASE: "."
+      SCOPE_DEPTH: "1"
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
+      - |
+        for var in SCOPE_DEPTH PLUGIN_BASE; do
+          val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
+          if [ -n "$val" ]; then
+            export "$var=$val"
+            echo ">>> Override: $var=$val"
+          fi
+        done
+      - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE"
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
       - git remote set-url origin "http://ci-bot:3935ecfe08a1f2baf043bde1a317b337f60650d0@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
-      - git add -- '*/CHANGELOG.md'
+      - git add -- '**/CHANGELOG.md'
       - |
         if ! git diff --cached --quiet; then
           git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
@@ -70,6 +82,13 @@ steps:
     image: netanelzucaim123/kaniko-monorepo-cliff:latest
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
+      - |
+        val=$(grep -m 1 "^PLUGIN_BASE=" pr_body.txt | cut -d= -f2-)
+        if [ -n "$val" ]; then
+          export PLUGIN_BASE="$val"
+          echo ">>> Override: PLUGIN_BASE=$val"
+        fi
+      - echo ">>> PLUGIN_BASE=$PLUGIN_BASE"
       - /app/plugin.sh
     environment:
       PLUGIN_BASE: "."
