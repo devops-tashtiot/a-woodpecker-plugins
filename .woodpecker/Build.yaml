@@ -43,7 +43,7 @@ steps:
           val=$(grep "^${var}=" pr_body.txt | head -1 | cut -d= -f2-)
           if [ -n "$val" ]; then export "$var=$val"; fi
         done
-      - echo ">>> Config: SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE SCOPE_EXCLUDE_REGEX=${SCOPE_EXCLUDE_REGEX:-}"
+      - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE SCOPE_EXCLUDE_REGEX=$SCOPE_EXCLUDE_REGEX"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.py
       - echo ">>> New tags:" && cat new_tags.txt || echo "No tags created"
