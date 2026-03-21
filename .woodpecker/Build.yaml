@@ -29,13 +29,15 @@ steps:
   - name: Run release
     image: netanelzucaim123/python-git-cliff:latest
     environment:
-      PLUGIN_MONOREPO_PATH: "."
+      PLUGIN_BASE: "."
+      OUTPUT_TAGS_FILE: "new_tags.txt"
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - export PR_BODY="$(cat pr_body.txt)"
       - echo ">>> Running release for PR body:" && echo "$PR_BODY"
       - python3 release.py
+      - echo ">>> New tags:" && cat new_tags.txt || echo "No tags created"
 
   - name: Push changelogs to Git
     image: alpine/git
@@ -53,3 +55,16 @@ steps:
           echo "No changelog changes to commit."
         fi
       - git push --force --tags origin
+
+  - name: Build and push plugin images
+    image: netanelzucaim123/kaniko-monorepo-cliff:latest
+    environment:
+      PLUGIN_BASE: "."
+      PLUGIN_REGISTRY: "index.docker.io"
+      PLUGIN_REPO: "netanelzucaim123"
+      PLUGIN_TAGS_FILE: "new_tags.txt"
+      # PLUGIN_ALIASES: "latest"   # uncomment to also push alias tags e.g. "latest", "prod,staging"
+      PLUGIN_USERNAME:
+        from_secret: docker_username
+      PLUGIN_PASSWORD:
+        from_secret: docker_password

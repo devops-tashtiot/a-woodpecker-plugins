@@ -4,11 +4,11 @@
   {
    
     "gitea": {
-      "command": "/home/netanelzucaim/.local/bin/gitea-mcp",
-      "args": ["stdio"],
+      "command": "/root/go/bin/gitea-mcp",
+      "args": ["-t", "stdio"],
       "env": {
-        "GITEA_URL": "http://localhost:3000",
-        "GITEA_TOKEN": "3935ecfe08a1f2baf043bde1a317b337f60650d0"
+        "GITEA_HOST": "http://gitea-http.gitea.svc.cluster.local:3000",
+        "GITEA_ACCESS_TOKEN": "3935ecfe08a1f2baf043bde1a317b337f60650d0"
       }
     }
   }
