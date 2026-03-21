@@ -68,6 +68,9 @@ steps:
 
   - name: Build and push plugin images
     image: netanelzucaim123/kaniko-monorepo-cliff:latest
+    commands:
+      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
+      - /app/plugin.sh
     environment:
       PLUGIN_BASE: "."
       PLUGIN_REGISTRY: "10.89.0.1:5000"
