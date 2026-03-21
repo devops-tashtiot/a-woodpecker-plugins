@@ -23,6 +23,7 @@ steps:
           "$GITEA_URL/api/v1/repos/$CI_REPO/pulls?state=closed&limit=50" \
           | tee raw_prs.json
         echo ">>> Fetched PR list"
+      - python3 -c "import json; prs=json.load(open('raw_prs.json')); body=prs[0]['body'] if prs else ''; open('pr_body.txt','w').write(body); print('>>> PR Body:\n'+body)"
 
   - name: Run release
     image: netanelzucaim123/python-git-cliff:latest
@@ -34,7 +35,6 @@ steps:
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
-      - python3 -c "import json; prs=json.load(open('raw_prs.json')); body=prs[0]['body'] if prs else ''; open('pr_body.txt','w').write(body); print('>>> PR Body:\n'+body)"
       - export PR_BODY="$(cat pr_body.txt)"
       - |
         for var in SCOPE_DEPTH PLUGIN_BASE SCOPE_EXCLUDE_REGEX; do
