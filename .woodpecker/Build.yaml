@@ -73,6 +73,7 @@ steps:
       PLUGIN_REPO: ""
       PLUGIN_TAGS_FILE: "new_tags.txt"
       PLUGIN_INSECURE: "true"
-      # PLUGIN_ALIASES: "latest"   # uncomment to also push alias tags e.g. "latest", "prod,staging"
+      PLUGIN_REGISTRY_MIRROR: "10.89.0.1:5000"
+      PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "local"
       PLUGIN_PASSWORD: "local"

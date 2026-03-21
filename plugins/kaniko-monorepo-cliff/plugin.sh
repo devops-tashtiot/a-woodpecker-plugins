@@ -168,6 +168,9 @@ build_image() {
     local extra_opts=""
     [ "${PLUGIN_SKIP_TLS_VERIFY:-}" = "true" ] && extra_opts="${extra_opts} --skip-tls-verify=true"
     [ "${PLUGIN_INSECURE:-}"        = "true" ] && extra_opts="${extra_opts} --insecure=true"
+    if [ -n "${PLUGIN_REGISTRY_MIRROR:-}" ]; then
+        extra_opts="${extra_opts} --registry-mirror=${PLUGIN_REGISTRY_MIRROR} --insecure-registry=${PLUGIN_REGISTRY_MIRROR}"
+    fi
 
     local destinations
     if [ "${PLUGIN_DRY_RUN:-}" = "true" ]; then
