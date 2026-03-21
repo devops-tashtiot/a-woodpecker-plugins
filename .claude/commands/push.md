@@ -25,4 +25,10 @@ Run the following steps in order inside the `semantic/` directory:
    ```
    git push origin main
    ```
+
+6. Force delete all remote tags:
+   ```
+   git ls-remote --tags origin | awk '{print $2}' | grep -v '{}' | sed 's|refs/tags/||' | xargs -r -I{} git push origin :refs/tags/{}
+   ```
+
 After each step, report the output to the user. If any step fails, stop and explain the error.
