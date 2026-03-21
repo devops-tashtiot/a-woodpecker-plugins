@@ -201,6 +201,7 @@ build_image() {
         -v "${log}" \
         --context="${context}" \
         --cleanup \
+        --snapshot-mode=redo \
         --dockerfile="${context}/${dockerfile_name}" \
         ${extra_opts} \
         ${destinations}
