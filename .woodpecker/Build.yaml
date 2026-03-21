@@ -18,12 +18,20 @@ steps:
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - |
-        curl -sf \
-          -H "Authorization: token $GITEA_TOKEN" \
-          "$GITEA_URL/api/v1/repos/$CI_REPO/pulls?state=closed&limit=50" \
-          | tee raw_prs.json
-        echo ">>> Fetched PR list"
-      - python3 -c "import json; prs=json.load(open('raw_prs.json')); body=prs[0]['body'] if prs else ''; open('pr_body.txt','w').write(body); print('>>> PR Body:\n'+body)"
+        python3 - <<'EOF'
+        import json, os
+        from urllib.request import urlopen, Request
+        token = os.environ["GITEA_TOKEN"]
+        url   = os.environ["GITEA_URL"]
+        repo  = os.environ["CI_REPO"]
+        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=50",
+                        headers={"Authorization": f"token {token}"})
+        data  = json.loads(urlopen(req).read())
+        print(">>> Fetched PR list (raw):", json.dumps(data, indent=2))
+        body  = data[0]["body"] if data else ""
+        open("pr_body.txt", "w").write(body)
+        print(">>> PR Body:\n" + body)
+        EOF
 
   - name: Run release
     image: netanelzucaim123/python-git-cliff:latest
