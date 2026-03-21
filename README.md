@@ -282,6 +282,37 @@ Result:
 
 ---
 
+## Commit type recognition — driven by `cliff.toml`
+
+Which commit types trigger a release — and what bump they produce — is read directly from `cliff.toml`'s `commit_parsers`. The script does **not** hardcode type names.
+
+With the default `cliff.toml`:
+
+```toml
+[bump]
+features_always_bump_minor = true
+breakage_always_bump_major = true
+custom_major_increment_regex = "^breaking"
+
+[git]
+commit_parsers = [
+  { message = "^breaking", group = "Breaking Changes", bump_type = "major" },
+  { message = "^feat",     group = "Features" },
+  { message = "^fix",      group = "Bug Fixes" },
+  { message = ".*",        skip = true },
+]
+```
+
+Parsers are matched in order — first match wins, same as git-cliff. Any commit type that only matches the final `{ message = ".*", skip = true }` entry is **silently filtered out** before processing. This means `chore`, `docs`, `ci`, `style`, etc. do not produce a release unless you add them to `commit_parsers`.
+
+To make `chore` produce a patch release, add it before the catch-all:
+
+```toml
+{ message = "^chore", group = "Chores" },
+```
+
+---
+
 ## Breaking changes and priority deduplication
 
 ### Bump priority
@@ -292,7 +323,10 @@ When the same PR body contains multiple commit lines for the **same scope**, onl
 |------|----------|------|
 | `breaking(...)` or `feat(...)!` | 3 | Major |
 | `feat(...)` | 2 | Minor |
-| `fix(...)`, `chore(...)`, others | 1 | Patch |
+| `fix(...)` | 1 | Patch |
+| `chore(...)`, `docs(...)`, others | skipped | — |
+
+> Priority is derived from `cliff.toml` commit_parsers: `bump_type = "major"` → 3, `features_always_bump_minor` + Features group → 2, any other non-skip match → 1, `skip = true` → filtered out entirely.
 
 ### Mixed message example — `breaking(*) + feat(nati)`
 

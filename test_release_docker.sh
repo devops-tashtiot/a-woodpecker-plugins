@@ -103,6 +103,8 @@ cleanup() {
     "plugins-kaniko-monorepo-cliff-v*" \
     "netanel-v*" \
     "harel-v*" \
+    "lagziel-v*" \
+    "kaniko-monorepo-v*" \
     "plugins-v*" \
     "v*"; do
     teardown_tags "$pattern"
@@ -127,7 +129,7 @@ echo ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SECTION 1: Depth=1 — Monorepo (existing tests, unchanged)
+# SECTION 1: Depth=1 — Monorepo (PLUGIN_BASE=./plugins, single-word scopes)
 # ─────────────────────────────────────────────────────────────────────────────
 echo "┌─────────────────────────────────────────────"
 echo "│ SECTION 1: Depth=1 Monorepo"
@@ -136,78 +138,78 @@ echo ""
 
 # TC1: First release -- no existing tag
 echo "TC1: First release -- new component gets v1.0.0"
-out=$(run_release "feat(plugins/netanel): add dashboard")
-assert_contains "output reports v1.0.0" "$out" "plugins-netanel-v1.0.0"
+out=$(run_release_ex "feat(netanel): add dashboard" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports v1.0.0" "$out" "netanel-v1.0.0"
 assert_not_contains "no errors" "$out" "ERROR"
-assert_tag_exists "git tag plugins-netanel-v1.0.0 exists" "plugins-netanel-v1.0.0"
+assert_tag_exists "git tag netanel-v1.0.0 exists" "netanel-v1.0.0"
 echo ""
 
 # TC2: feat bumps minor -- builds on TC1's persisted tag
 echo "TC2: feat bumps minor (1.0.0 -> 1.1.0)"
-out=$(run_release "feat(plugins/netanel): add sidebar")
-assert_contains "output reports v1.1.0" "$out" "plugins-netanel-v1.1.0"
+out=$(run_release_ex "feat(netanel): add sidebar" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports v1.1.0" "$out" "netanel-v1.1.0"
 assert_not_contains "no errors" "$out" "ERROR"
-assert_tag_exists "git tag plugins-netanel-v1.1.0 exists" "plugins-netanel-v1.1.0"
+assert_tag_exists "git tag netanel-v1.1.0 exists" "netanel-v1.1.0"
 echo ""
 
 # TC3a: lagziel first release
 echo "TC3a: lagziel first release -> v1.0.0"
-out=$(run_release "feat(plugins/lagziel): initial release")
-assert_contains "output reports lagziel v1.0.0" "$out" "plugins-lagziel-v1.0.0"
+out=$(run_release_ex "feat(lagziel): initial release" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports lagziel v1.0.0" "$out" "lagziel-v1.0.0"
 assert_not_contains "no errors" "$out" "ERROR"
-assert_tag_exists "git tag plugins-lagziel-v1.0.0 exists" "plugins-lagziel-v1.0.0"
+assert_tag_exists "git tag lagziel-v1.0.0 exists" "lagziel-v1.0.0"
 echo ""
 
 echo "TC3b: fix bumps patch (1.0.0 -> 1.0.1)"
-out=$(run_release "fix(plugins/lagziel): resolve crash on startup")
-assert_contains "output reports v1.0.1" "$out" "plugins-lagziel-v1.0.1"
+out=$(run_release_ex "fix(lagziel): resolve crash on startup" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports v1.0.1" "$out" "lagziel-v1.0.1"
 assert_not_contains "no errors" "$out" "ERROR"
-assert_tag_exists "git tag plugins-lagziel-v1.0.1 exists" "plugins-lagziel-v1.0.1"
+assert_tag_exists "git tag lagziel-v1.0.1 exists" "lagziel-v1.0.1"
 echo ""
 
 # TC4: Multi-scope explosion -- two components in one line
 echo "TC4: Multi-scope explosion -- two components released from one line"
-out=$(run_release "feat(plugins/harel, plugins/kaniko-monorepo): shared auth update")
-assert_contains "output reports harel v1.0.0" "$out" "plugins-harel-v1.0.0"
-assert_contains "output reports kaniko-monorepo v1.0.0" "$out" "plugins-kaniko-monorepo-v1.0.0"
-assert_tag_exists "git tag plugins-harel-v1.0.0 exists" "plugins-harel-v1.0.0"
-assert_tag_exists "git tag plugins-kaniko-monorepo-v1.0.0 exists" "plugins-kaniko-monorepo-v1.0.0"
+out=$(run_release_ex "feat(harel, kaniko-monorepo): shared auth update" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports harel v1.0.0" "$out" "harel-v1.0.0"
+assert_contains "output reports kaniko-monorepo v1.0.0" "$out" "kaniko-monorepo-v1.0.0"
+assert_tag_exists "git tag harel-v1.0.0 exists" "harel-v1.0.0"
+assert_tag_exists "git tag kaniko-monorepo-v1.0.0 exists" "kaniko-monorepo-v1.0.0"
 echo ""
 
 # TC5: Non-existent directory is skipped
 echo "TC5: Non-existent directory -- skipped gracefully"
-out=$(run_release "feat(nonexistent/component): some change")
+out=$(run_release_ex "feat(nonexistent): some change" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
 assert_contains "skips missing directory" "$out" "SKIP"
 assert_not_contains "no crash" "$out" "Traceback"
 echo ""
 
 # TC6: No conventional commits
 echo "TC6: No conventional commits in PR body -- exits cleanly"
-out=$(run_release "just a random PR description with no commits")
+out=$(run_release_ex "just a random PR description with no commits" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
 assert_contains "no commits detected" "$out" "No Conventional Commits"
 echo ""
 
 # TC7: feat bumps minor on existing component
 echo "TC7: feat bumps minor on existing component (1.0.0 -> 1.1.0)"
-out=$(run_release "feat(plugins/harel): add retry logic")
-assert_contains "output reports harel v1.1.0" "$out" "plugins-harel-v1.1.0"
+out=$(run_release_ex "feat(harel): add retry logic" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports harel v1.1.0" "$out" "harel-v1.1.0"
 assert_not_contains "no errors" "$out" "ERROR"
-assert_tag_exists "git tag plugins-harel-v1.1.0 exists" "plugins-harel-v1.1.0"
+assert_tag_exists "git tag harel-v1.1.0 exists" "harel-v1.1.0"
 echo ""
 
 # TC-BREAK: breaking type triggers major bump
 echo "TC-BREAK: breaking(scope) triggers major bump (1.1.0 -> 2.0.0)"
-out=$(run_release "breaking(plugins/harel): remove legacy api")
-assert_contains "output reports harel v2.0.0" "$out" "plugins-harel-v2.0.0"
+out=$(run_release_ex "breaking(harel): remove legacy api" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_contains "output reports harel v2.0.0" "$out" "harel-v2.0.0"
 assert_not_contains "no errors" "$out" "ERROR"
-assert_tag_exists "git tag plugins-harel-v2.0.0 exists" "plugins-harel-v2.0.0"
+assert_tag_exists "git tag harel-v2.0.0 exists" "harel-v2.0.0"
 echo ""
 
 # TC8: Duplicate lines deduplicated
 echo "TC8: Duplicate PR lines -- processed only once"
-out=$(run_release "$(printf 'feat(plugins/harel): add thing\nfeat(plugins/harel): add thing')")
-assert_tag_exists "git tag plugins-harel-v2.1.0 exists" "plugins-harel-v2.1.0"
-count=$(echo "$out" | grep -c "SUCCESS.*plugins-harel" || true)
+out=$(run_release_ex "$(printf 'feat(harel): add thing\nfeat(harel): add thing')" "PLUGIN_BASE=./plugins" "SCOPE_DEPTH=1")
+assert_tag_exists "git tag harel-v2.1.0 exists" "harel-v2.1.0"
+count=$(echo "$out" | grep -c "SUCCESS.*harel" || true)
 if [ "$count" -eq 1 ]; then
   echo "  PASS: processed exactly once (count=$count)"
   PASS=$((PASS + 1))

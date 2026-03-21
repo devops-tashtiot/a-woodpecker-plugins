@@ -73,12 +73,13 @@ python3 test_release.py
 2. **depth=0**: scopeless pattern `^([a-z]+)(!?):\s*(.*)` → picks single highest-priority line
 3. **depth=1/2**: scoped pattern `^([a-z]+)\(([^)]+)\)(!?):\s*(.*)` is extracted
 4. Multi-scope commits are exploded: `feat(a, b): msg` → `{"feat(a): msg", "feat(b): msg"}`
-5. Wildcard `*` scopes are expanded via filesystem discovery (`discover_scopes`)
-6. `SCOPE_EXCLUDE_REGEX` is applied to ALL scopes — both wildcard-expanded and explicit
-7. Per-scope deduplication: if same scope appears multiple times, highest bump priority wins (`breaking`/`!` = 3 > `feat` = 2 > others = 1)
-8. For each surviving scope: `git-cliff` is invoked with `--include-path` for isolation and `--with-commit` for the current bump message
-9. Each component gets its own `CHANGELOG.md` and a versioned tag
-10. If `OUTPUT_TAGS_FILE` is set, each created tag is appended to that file
+5. `cliff.toml` `commit_parsers` are loaded — commits matching `skip = true` parsers are filtered out (e.g. `chore`, `docs`, `ci` with the default config)
+6. Wildcard `*` scopes are expanded via filesystem discovery (`discover_scopes`)
+7. `SCOPE_EXCLUDE_REGEX` is applied to ALL scopes — both wildcard-expanded and explicit
+8. Per-scope deduplication: if same scope appears multiple times, highest bump priority wins — priority is driven by `cliff.toml` commit_parsers (`breaking`/`!` = 3 > `feat` = 2 > `fix`/others = 1 > skip = filtered)
+9. For each surviving scope: `git-cliff` is invoked with `--include-path` for isolation and `--with-commit` for the current bump message
+10. Each component gets its own `CHANGELOG.md` and a versioned tag
+11. If `OUTPUT_TAGS_FILE` is set, each created tag is appended to that file
 
 ### Wildcard Rules
 
@@ -107,8 +108,9 @@ Forward slashes in scopes are replaced with hyphens to form the tag prefix.
 | `parse_pr_body_polyrepo(body)` | Parses scopeless commits for depth=0 |
 | `discover_scopes(root, depth, parent_prefix)` | Finds component dirs via `os.listdir` |
 | `expand_wildcard(messages, root, depth, exclude_regex)` | Replaces `*` scopes; filters via exclude regex |
-| `_bump_priority(msg)` | Returns 3/2/1 for breaking/feat/others — used for deduplication |
-| `deduplicate_by_scope(messages)` | Keeps highest-priority message per scope |
+| `load_cliff_parsers(toml_path)` | Reads `cliff.toml` and returns `(parsers, bump_cfg)` — drives type recognition and priority |
+| `_bump_priority(msg, parsers, bump_cfg)` | Returns 3/2/1/0 driven by cliff.toml commit_parsers; falls back to hardcoded when called without parsers |
+| `deduplicate_by_scope(messages, parsers, bump_cfg)` | Keeps highest-priority message per scope |
 | `release()` | Main entry point — orchestrates the full pipeline |
 
 ### Key Files
@@ -118,7 +120,7 @@ Forward slashes in scopes are replaced with hyphens to form the tag prefix.
 | `release.py` | Main orchestrator (~350 lines, single file by design) |
 | `test_release.py` | **106** unit tests across 7 classes (`TestParsePrBody`, `TestParsePrBodyPolyrepo`, `TestBumpPriority`, `TestDeduplicateByScope`, `TestDiscoverScopes`, `TestExpandWildcard`, `TestRelease`) |
 | `test_release_docker.sh` | **114** Docker integration tests across 8 sections (depth=0/1/1b/2, wildcard, exclude, dedup, OUTPUT_TAGS_FILE) |
-| `cliff.toml` | git-cliff config: `feat`→minor, `breaking`→major, `limit_commits_to_path=true`, `breakage_always_bump_major=true` |
+| `cliff.toml` | git-cliff config and **source of truth for commit type recognition**: `commit_parsers` defines which types trigger releases and at what bump level; `skip = true` entries are filtered before any processing |
 | `README.md` | User-facing documentation for all depths, wildcards, exclude regex, and examples |
 | `.woodpecker/Build.yaml` | CI pipeline: clone → fetch PR body → run release → push changelogs → build Docker images |
 | `plugins/kaniko-monorepo-cliff/` | Woodpecker plugin that reads `OUTPUT_TAGS_FILE` and builds/pushes Docker images via Kaniko |

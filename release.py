@@ -3,6 +3,54 @@ import re
 import os
 
 
+def load_cliff_parsers(toml_path):
+    """
+    Reads cliff.toml and extracts commit_parsers and bump config.
+
+    Returns (parsers, bump_cfg) where:
+      parsers  = [{"message": str, "group": str, "bump_type": str|None, "skip": bool}, ...]
+      bump_cfg = {"features_always_bump_minor": bool,
+                  "breakage_always_bump_major": bool,
+                  "custom_major_increment_regex": str|None}
+
+    Parsers are ordered — first match wins (same as git-cliff).
+    Returns ([], {}) on any read/parse error.
+    """
+    try:
+        with open(toml_path) as f:
+            content = f.read()
+    except OSError:
+        return [], {}
+
+    parsers = []
+    cp_match = re.search(r'commit_parsers\s*=\s*\[(.*?)\]', content, re.DOTALL)
+    if cp_match:
+        for entry in re.finditer(r'\{([^}]+)\}', cp_match.group(1)):
+            kv_str = entry.group(1)
+            p = {}
+            for kv in re.finditer(r'(\w+)\s*=\s*"([^"]*)"', kv_str):
+                p[kv.group(1)] = kv.group(2)
+            skip_m = re.search(r'\bskip\s*=\s*(true|false)', kv_str)
+            p['skip'] = skip_m.group(1) == 'true' if skip_m else False
+            if 'message' in p:
+                parsers.append(p)
+
+    bump_cfg = {
+        'features_always_bump_minor': True,
+        'breakage_always_bump_major': True,
+        'custom_major_increment_regex': None,
+    }
+    for key in ('features_always_bump_minor', 'breakage_always_bump_major'):
+        m = re.search(rf'{key}\s*=\s*(true|false)', content)
+        if m:
+            bump_cfg[key] = m.group(1) == 'true'
+    m = re.search(r'custom_major_increment_regex\s*=\s*"([^"]*)"', content)
+    if m:
+        bump_cfg['custom_major_increment_regex'] = m.group(1)
+
+    return parsers, bump_cfg
+
+
 def run_command(command):
     """Executes shell commands and captures output."""
     return subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -173,28 +221,57 @@ def expand_wildcard(messages, root_path, depth, exclude_regex=""):
     return result
 
 
-def _bump_priority(msg):
+def _bump_priority(msg, parsers=None, bump_cfg=None):
     """
     Returns version bump priority for deduplication.
-      3 — breaking type or ! (major bump)
-      2 — feat (minor bump)
-      1 — everything else (patch bump)
+      3 — major bump  (breaking type, ! bang, bump_type=major, or custom_major_increment_regex)
+      2 — minor bump  (feat / bump_type=minor / features_always_bump_minor group)
+      1 — patch bump  (fix and other non-skip types)
+      0 — skip        (matches a skip=true parser, or no parser matched)
+
+    When parsers is provided (loaded from cliff.toml), priority is driven entirely
+    by commit_parsers — first matching parser wins, same as git-cliff.
+    Falls back to hardcoded logic when parsers is None or empty.
     """
+    # ! bang notation is always a breaking change (Conventional Commits standard)
+    if re.search(r'\([^)]+\)!:', msg) or re.match(r'^[a-z]+!:', msg):
+        return 3
+
+    if parsers:
+        bump_cfg = bump_cfg or {}
+        custom_major_re = bump_cfg.get('custom_major_increment_regex')
+        features_minor = bump_cfg.get('features_always_bump_minor', True)
+
+        if custom_major_re and re.search(custom_major_re, msg):
+            return 3
+
+        for p in parsers:
+            if re.search(p['message'], msg):
+                if p.get('skip'):
+                    return 0
+                if p.get('bump_type') == 'major':
+                    return 3
+                if p.get('bump_type') == 'minor':
+                    return 2
+                if features_minor and 'feature' in p.get('group', '').lower():
+                    return 2
+                return 1
+        return 0  # no parser matched
+
+    # Fallback: hardcoded (used when called without cliff.toml parsers)
     type_match = re.match(r'^([a-z]+)\(', msg)
     if not type_match:
         return 0
     msg_type = type_match.group(1)
-    if re.search(r'\([^)]+\)!', msg):
-        return 3
     return {'breaking': 3, 'feat': 2}.get(msg_type, 1)
 
 
-def deduplicate_by_scope(messages):
+def deduplicate_by_scope(messages, parsers=None, bump_cfg=None):
     """
     For each scope, keeps only the highest-priority message.
     If two commits target the same scope (e.g. feat(nati) and breaking(nati)),
     the one with the higher bump priority wins.
-    Priority: breaking / ! (3) > feat (2) > fix/chore/others (1).
+    Priority: breaking / ! (3) > feat (2) > fix/others (1) > skip (0).
     """
     by_scope = {}
     for msg in messages:
@@ -202,7 +279,8 @@ def deduplicate_by_scope(messages):
         if not scope_match:
             continue
         scope = scope_match.group(1)
-        if scope not in by_scope or _bump_priority(msg) > _bump_priority(by_scope[scope]):
+        priority = _bump_priority(msg, parsers, bump_cfg)
+        if scope not in by_scope or priority > _bump_priority(by_scope[scope], parsers, bump_cfg):
             by_scope[scope] = msg
     return set(by_scope.values())
 
@@ -214,11 +292,14 @@ def release():
     output_tags_file = os.getenv("OUTPUT_TAGS_FILE", "")
     scope_depth = int(os.getenv("SCOPE_DEPTH", "1"))
     exclude_regex = os.getenv("SCOPE_EXCLUDE_REGEX", "")
-    global_toml = os.path.join(root_path, "cliff.toml")
+    _script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in dir() else os.getcwd()
+    global_toml = os.path.join(_script_dir, "cliff.toml")
 
     if not os.path.exists(global_toml):
         print(f">>> ERROR: Global cliff.toml not found at {global_toml}")
         return
+
+    parsers, bump_cfg = load_cliff_parsers(global_toml)
 
     # ── depth=0: polyrepo (no scope in PR body) ───────────────────────────────
     if scope_depth == 0:
@@ -228,7 +309,7 @@ def release():
             return
 
         # Pick the single highest-priority message for the version bump
-        best_msg = max(messages, key=_bump_priority)
+        best_msg = max(messages, key=lambda m: _bump_priority(m, parsers, bump_cfg))
         component_tag_pattern = r"^v[0-9]+\.[0-9]+\.[0-9]+$"
 
         existing_tags = run_command("git tag -l 'v*' --sort=-version:refname")
@@ -276,11 +357,17 @@ def release():
         print(">>> No Conventional Commits detected in PR Body.")
         return
 
+    # Filter commits that cliff.toml marks as skip (e.g. chore, docs, ci)
+    messages = {m for m in messages if _bump_priority(m, parsers, bump_cfg) > 0}
+    if not messages:
+        print(">>> No release commits detected in PR Body.")
+        return
+
     # Expand wildcards + apply SCOPE_EXCLUDE_REGEX to all scopes
     messages = expand_wildcard(messages, root_path, scope_depth, exclude_regex)
 
     # Deduplicate: if same scope appears with different types, highest priority wins
-    messages = deduplicate_by_scope(messages)
+    messages = deduplicate_by_scope(messages, parsers, bump_cfg)
 
     if not messages:
         print(">>> No components to release after expansion/filtering.")

@@ -524,7 +524,7 @@ class TestRelease(unittest.TestCase):
 
     def test_deeply_nested_slug(self):
         mock_cmd = self._run(
-            "chore(base/infra/networking/firewall): update rules",
+            "feat(base/infra/networking/firewall): update rules",
             dirs_that_exist=["base/infra/networking/firewall"],
         )
         call_arg = mock_cmd.call_args[0][0]
