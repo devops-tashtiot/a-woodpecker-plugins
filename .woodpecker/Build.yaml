@@ -5,6 +5,11 @@ clone:
       depth: 0
       tags: true
 
+when:
+  - event: push
+    branch: main
+
+
 steps:
   - name: Fetch PR body
     image: netanelzucaim123/python-git-cliff:latest
@@ -16,34 +21,22 @@ steps:
         python3 - <<'EOF'
         import json, os, sys
         from urllib.request import urlopen, Request
-        token      = os.environ["GITEA_TOKEN"]
-        url        = os.environ["GITEA_URL"]
-        repo       = os.environ["CI_REPO"]
-        pr_num     = os.environ.get("CI_COMMIT_PULL_REQUEST", "")
-        target_ref = os.environ.get("CI_COMMIT_TARGET_BRANCH", "")
-        event      = os.environ.get("CI_PIPELINE_EVENT", "")
-
-        print(f">>> PR #{pr_num} — event={event}, target_branch={target_ref}")
-
-        if not pr_num:
-            print(">>> No PR number found — stopping pipeline")
+        token = os.environ["GITEA_TOKEN"]
+        url   = os.environ["GITEA_URL"]
+        repo  = os.environ["CI_REPO"]
+        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=1&type=closed",
+                        headers={"Authorization": f"token {token}"})
+        prs   = json.loads(urlopen(req).read())
+        if not prs:
+            print(">>> No closed PRs found — stopping pipeline")
             sys.exit(1)
-
-        if target_ref != "main":
-            print(f">>> PR targets '{target_ref}', not main — stopping pipeline")
+        pr     = prs[0]
+        merged = pr.get("merged", False)
+        base   = pr.get("base", {}).get("ref", "")
+        print(f">>> Latest closed PR #{pr['number']} — merged={merged}, base={base}")
+        if not merged or base != "main":
+            print(">>> Last PR was not merged into main — stopping pipeline")
             sys.exit(1)
-
-        req = Request(f"{url}/api/v1/repos/{repo}/pulls/{pr_num}",
-                      headers={"Authorization": f"token {token}"})
-        pr = json.loads(urlopen(req).read())
-
-        if event == "pull_request_closed":
-            merged = pr.get("merged", False)
-            print(f">>> merged={merged}")
-            if not merged:
-                print(">>> PR was closed without merging — stopping pipeline")
-                sys.exit(1)
-
         body = pr.get("body", "")
         open("pr_body.txt", "w").write(body)
         print(">>> PR Body:\n" + body)
@@ -74,8 +67,6 @@ steps:
 
   - name: Push changelogs to Git
     image: alpine/git
-    when:
-      - event: pull_request_closed
     environment:
       PLUGIN_BASE: "."
       SCOPE_DEPTH: "1"
@@ -106,8 +97,6 @@ steps:
 
   - name: Build and push plugin images
     image: netanelzucaim123/kaniko-monorepo-cliff:latest
-    when:
-      - event: pull_request_closed
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
