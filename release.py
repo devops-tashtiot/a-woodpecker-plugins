@@ -233,10 +233,6 @@ def _bump_priority(msg, parsers=None, bump_cfg=None):
     by commit_parsers — first matching parser wins, same as git-cliff.
     Falls back to hardcoded logic when parsers is None or empty.
     """
-    # ! bang notation is always a breaking change (Conventional Commits standard)
-    if re.search(r'\([^)]+\)!:', msg) or re.match(r'^[a-z]+!:', msg):
-        return 3
-
     if parsers:
         bump_cfg = bump_cfg or {}
         custom_major_re = bump_cfg.get('custom_major_increment_regex')
@@ -324,8 +320,33 @@ def _print_cliff_rules(parsers, bump_cfg):
         group_str = f" → {group}" if group else ""
         print(f"      [{label}]  pattern={pattern!r}{group_str}")
 
-    print("    ! (bang) in commit always → MAJOR (breaking change)")
     print("    No parser matched         → SKIP (no release)")
+
+
+def _print_message_classification(messages, parsers, bump_cfg):
+    """
+    For each commit message, prints which cliff.toml parser rule it matched
+    and what bump level that produces.
+    """
+    bump_labels = {3: "MAJOR", 2: "MINOR", 1: "PATCH", 0: "SKIP "}
+    print(">>> Commit classification:")
+    for msg in sorted(messages):
+        priority = _bump_priority(msg, parsers, bump_cfg)
+        label = bump_labels.get(priority, "?    ")
+        # Find the matched parser pattern for display
+        rule_str = "no parser matched"
+        if parsers:
+            custom_major_re = bump_cfg.get('custom_major_increment_regex') if bump_cfg else None
+            if custom_major_re and re.search(custom_major_re, msg):
+                rule_str = f"custom_major_increment_regex={custom_major_re!r}"
+            else:
+                for p in parsers:
+                    if re.search(p['message'], msg):
+                        rule_str = f"pattern={p['message']!r}"
+                        if p.get('group'):
+                            rule_str += f" → {p['group']}"
+                        break
+        print(f"    [{label}]  {msg!r}  ({rule_str})")
 
 
 def release():
@@ -416,6 +437,8 @@ def release():
     if not messages:
         print(">>> No components to release after expansion/filtering.")
         return
+
+    _print_message_classification(messages, parsers, bump_cfg)
 
     for full_msg in messages:
         path_match = re.search(r"\(([^)]+)\)", full_msg)
