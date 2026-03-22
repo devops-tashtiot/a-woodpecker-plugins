@@ -315,18 +315,53 @@ To make `chore` produce a patch release, add it before the catch-all:
 
 ## Breaking changes and priority deduplication
 
+### The `!` bang — overrides everything, always Major
+
+Appending `!` before the colon marks a breaking change and **always produces a Major bump**. This check runs **before** any `cliff.toml` parser — which has one critical implication:
+
+**`!` bypasses the skip filter entirely.** Even commit types that are normally skipped (`chore`, `docs`, `ci`, `check`, etc.) will trigger a Major release if `!` is present.
+
+```
+feat(nati)!:  redesign auth API    → nati-v2.0.0   ✅ Major (feat + !)
+fix(nati)!:   drop legacy endpoint → nati-v2.0.0   ✅ Major (fix + !)
+chore(nati)!: breaking cleanup     → nati-v2.0.0   ✅ Major (chore is normally skipped, but ! overrides)
+check!:       something breaking   → v2.0.0         ✅ Major (unknown type, still Major because of !)
+chore(nati):  update deps          → (no release)   ❌ Skipped (no ! → cliff.toml skip=true applies)
+```
+
+In short:
+- **No `!`** → cliff.toml parsers decide (skip types are filtered out, no release)
+- **With `!`** → always Major, no matter the type, skip or not
+
+### Initial tag — parser bump level is irrelevant (skip is not)
+
+When a component has **no existing tag**, the first release is always `slug-v1.0.0` (or `v1.0.0` for polyrepo), regardless of whether the commit is `feat`, `fix`, `breaking`, or `!`.
+
+The parser is still checked for one thing: **skip**. If the commit type matches `skip = true` (e.g. `chore`, `docs`, `ci`) **and has no `!`**, no release is created at all.
+
+```
+First release examples (no existing tag):
+  feat(nati): add dashboard    → nati-v1.0.0   ✅
+  fix(nati): patch crash       → nati-v1.0.0   ✅
+  breaking(nati): remove api   → nati-v1.0.0   ✅
+  feat(nati)!: breaking change → nati-v1.0.0   ✅
+  chore(nati)!: forced major   → nati-v1.0.0   ✅  (! bypasses skip — still first release)
+  chore(nati): update deps     → (no release)  ❌  (skip=true, no ! to override)
+```
+
 ### Bump priority
 
 When the same PR body contains multiple commit lines for the **same scope**, only the **highest-priority** one is processed:
 
 | Type | Priority | Bump |
 |------|----------|------|
-| `breaking(...)` or `feat(...)!` | 3 | Major |
+| Any type with `!` (e.g. `feat!`, `fix!`, `chore!`) | 3 | **Always Major** — checked before parsers |
+| `breaking(...)` | 3 | Major — via `bump_type = "major"` in cliff.toml |
 | `feat(...)` | 2 | Minor |
 | `fix(...)` | 1 | Patch |
-| `chore(...)`, `docs(...)`, others | skipped | — |
+| `chore(...)`, `docs(...)`, `ci(...)`, others | skipped | No release (unless `!` is used) |
 
-> Priority is derived from `cliff.toml` commit_parsers: `bump_type = "major"` → 3, `features_always_bump_minor` + Features group → 2, any other non-skip match → 1, `skip = true` → filtered out entirely.
+> The `!` check is unconditional and runs before cliff.toml parsers. After that, priority comes from `commit_parsers`: `bump_type = "major"` → 3, `features_always_bump_minor` + Features group → 2, any other non-skip match → 1, `skip = true` → filtered out.
 
 ### Mixed message example — `breaking(*) + feat(nati)`
 
