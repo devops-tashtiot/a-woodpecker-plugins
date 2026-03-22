@@ -6,7 +6,7 @@ clone:
       tags: true
 
 when:
-  - event: push
+  - event: pull_request_closed
     branch: main
 
 
@@ -19,16 +19,31 @@ steps:
     commands:
       - |
         python3 - <<'EOF'
-        import json, os
+        import json, os, sys
         from urllib.request import urlopen, Request
-        token = os.environ["GITEA_TOKEN"]
-        url   = os.environ["GITEA_URL"]
-        repo  = os.environ["CI_REPO"]
-        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=50",
-                        headers={"Authorization": f"token {token}"})
-        data  = json.loads(urlopen(req).read())
-        print(">>> Fetched PR list (raw):", json.dumps(data, indent=2))
-        body  = data[0]["body"] if data else ""
+        token  = os.environ["GITEA_TOKEN"]
+        url    = os.environ["GITEA_URL"]
+        repo   = os.environ["CI_REPO"]
+        pr_num = os.environ.get("CI_COMMIT_PULL_REQUEST", "")
+
+        if not pr_num:
+            print(">>> No PR number found — stopping pipeline")
+            sys.exit(1)
+
+        req = Request(f"{url}/api/v1/repos/{repo}/pulls/{pr_num}",
+                      headers={"Authorization": f"token {token}"})
+        pr = json.loads(urlopen(req).read())
+
+        merged   = pr.get("merged", False)
+        base_ref = pr.get("base", {}).get("ref", "")
+
+        print(f">>> PR #{pr_num} — merged={merged}, base={base_ref}")
+
+        if not merged or base_ref != "main":
+            print(">>> PR was not merged into main — stopping pipeline")
+            sys.exit(1)
+
+        body = pr.get("body", "")
         open("pr_body.txt", "w").write(body)
         print(">>> PR Body:\n" + body)
         EOF
