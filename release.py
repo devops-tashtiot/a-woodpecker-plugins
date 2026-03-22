@@ -490,27 +490,9 @@ def release():
 
         existing_tags = run_command(f"git tag -l '{path_slug}-v*' --sort=-version:refname")
         latest_tag = existing_tags.stdout.strip().splitlines()[0] if existing_tags.stdout.strip() else None
-
         component_tag_pattern = f"^{path_slug}-v[0-9]+\\.[0-9]+\\.[0-9]+$"
 
-        if latest_tag:
-            bumped = run_command(
-                f"git cliff --config {global_toml} "
-                f"--include-path '{rel_path}/**/*' "
-                f"--tag-pattern '{component_tag_pattern}' "
-                f"--bump --bumped-version "
-                f"--with-commit '{full_msg}'"
-            )
-            new_tag = bumped.stdout.strip()
-        else:
-            new_tag = f"{path_slug}-v1.0.0"
-
-        tag_res = run_command(f"git tag {new_tag}")
-        if tag_res.returncode != 0:
-            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
-            continue
-
-        # All commits for this scope: breaking (!) first, then by priority descending
+        # Get ALL messages for this scope to ensure accurate bumping and logging
         all_scope_msgs = sorted(
             all_by_scope.get(rel_path, {full_msg}),
             key=lambda m: _bump_priority(m, parsers, bump_cfg),
@@ -518,25 +500,49 @@ def release():
         )
         with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
 
+        # ── STEP 1: CALCULATE VERSION ──────────────────────────────────────
+        if latest_tag:
+            # We pass ALL messages here so git-cliff can see if there's a 'breaking' vs 'feat'
+            bump_cmd = (
+                f"git cliff --config {global_toml} "
+                f"--include-path '{rel_path}/**/*' "
+                f"--tag-pattern '{component_tag_pattern}' "
+                f"--bump --bumped-version "
+                f"{with_commit_args}"
+            )
+            bumped = run_command(bump_cmd)
+            new_tag = bumped.stdout.strip()
+        else:
+            new_tag = f"{path_slug}-v1.0.0"
+
+        # ── STEP 2: GENERATE CHANGELOG ─────────────────────────────────────
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
+
+        # Note: --unreleased is REMOVED to ignore git history
         cliff_cmd = (
             f"git cliff --config {global_toml} "
             f"--include-path '{rel_path}/**/*' "
             f"--tag-pattern '{component_tag_pattern}' "
-            f"--unreleased "
             f"--tag '{new_tag}' "
             f"{with_commit_args} "
             f"{output_flag}"
         )
         res = run_command(cliff_cmd)
-        if res.returncode == 0:
+
+        if res.returncode != 0:
+            print(f">>> ERROR generating changelog for {path_slug}: {res.stderr.strip()}")
+            continue
+
+        # ── STEP 3: TAG THE REPO (Only if changelog succeeded) ──────────────
+        tag_res = run_command(f"git tag {new_tag}")
+        if tag_res.returncode == 0:
             print(f">>> SUCCESS: Created {new_tag}")
             if output_tags_file:
                 with open(output_tags_file, "a") as f:
                     f.write(f"{new_tag}\n")
         else:
-            print(f">>> ERROR for {path_slug}: {res.stderr.strip()}")
+            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
 
 
 if __name__ == "__main__":
