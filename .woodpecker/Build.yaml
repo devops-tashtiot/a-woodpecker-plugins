@@ -6,8 +6,7 @@ clone:
       tags: true
 
 when:
-  - event: pull_request_closed
-    # branch: main
+  - event: [pull_request, pull_request_closed]
 
 
 steps:
@@ -21,27 +20,33 @@ steps:
         python3 - <<'EOF'
         import json, os, sys
         from urllib.request import urlopen, Request
-        token  = os.environ["GITEA_TOKEN"]
-        url    = os.environ["GITEA_URL"]
-        repo   = os.environ["CI_REPO"]
-        pr_num = os.environ.get("CI_COMMIT_PULL_REQUEST", "")
+        token      = os.environ["GITEA_TOKEN"]
+        url        = os.environ["GITEA_URL"]
+        repo       = os.environ["CI_REPO"]
+        pr_num     = os.environ.get("CI_COMMIT_PULL_REQUEST", "")
+        target_ref = os.environ.get("CI_COMMIT_TARGET_BRANCH", "")
+        event      = os.environ.get("CI_PIPELINE_EVENT", "")
+
+        print(f">>> PR #{pr_num} — event={event}, target_branch={target_ref}")
 
         if not pr_num:
             print(">>> No PR number found — stopping pipeline")
+            sys.exit(1)
+
+        if target_ref != "main":
+            print(f">>> PR targets '{target_ref}', not main — stopping pipeline")
             sys.exit(1)
 
         req = Request(f"{url}/api/v1/repos/{repo}/pulls/{pr_num}",
                       headers={"Authorization": f"token {token}"})
         pr = json.loads(urlopen(req).read())
 
-        merged   = pr.get("merged", False)
-        base_ref = pr.get("base", {}).get("ref", "")
-
-        print(f">>> PR #{pr_num} — merged={merged}, base={base_ref}")
-
-        if not merged or base_ref != "main":
-            print(">>> PR was not merged into main — stopping pipeline")
-            sys.exit(1)
+        if event == "pull_request_closed":
+            merged = pr.get("merged", False)
+            print(f">>> merged={merged}")
+            if not merged:
+                print(">>> PR was closed without merging — stopping pipeline")
+                sys.exit(1)
 
         body = pr.get("body", "")
         open("pr_body.txt", "w").write(body)
@@ -73,6 +78,8 @@ steps:
 
   - name: Push changelogs to Git
     image: alpine/git
+    when:
+      - event: pull_request_closed
     environment:
       PLUGIN_BASE: "."
       SCOPE_DEPTH: "1"
@@ -103,6 +110,8 @@ steps:
 
   - name: Build and push plugin images
     image: netanelzucaim123/kaniko-monorepo-cliff:latest
+    when:
+      - event: pull_request_closed
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
