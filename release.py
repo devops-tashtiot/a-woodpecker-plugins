@@ -417,24 +417,42 @@ def release():
         else:
             new_tag = "v1.0.0"
 
-        # Changelog: generate BEFORE tagging so git-cliff sees the previous tag as
-        # "latest" and only generates the new unreleased section — not older entries.
         changelog_path = os.path.join(root_path, 'CHANGELOG.md')
-        output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
-        cliff_cmd = (
-            f"git cliff --config {global_toml} "
-            f"--tag-pattern '{component_tag_pattern}' "
-            f"--unreleased "
-            f"--tag '{new_tag}' "
-            f"--with-commit '{best_msg}' "
-            f"{output_flag}"
-        )
-        res = run_command(cliff_cmd)
+
+        if latest_tag:
+            # Subsequent release: changelog before tag so --prepend works correctly.
+            cliff_cmd = (
+                f"git cliff --config {global_toml} "
+                f"--tag-pattern '{component_tag_pattern}' "
+                f"--unreleased "
+                f"--tag '{new_tag}' "
+                f"--with-commit '{best_msg}' "
+                f"--prepend {changelog_path}"
+            )
+            res = run_command(cliff_cmd)
+            if res.returncode != 0:
+                print(f">>> ERROR: {res.stderr.strip()}")
+                return
+            tag_res = run_command(f"git tag {new_tag}")
+        else:
+            # First release: tag first so git-cliff names the section correctly.
+            tag_res = run_command(f"git tag {new_tag}")
+            if tag_res.returncode != 0:
+                print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
+                return
+            cliff_cmd = (
+                f"git cliff --config {global_toml} "
+                f"--tag-pattern '{component_tag_pattern}' "
+                f"--unreleased "
+                f"--tag '{new_tag}' "
+                f"--with-commit '{best_msg}' "
+                f"--output {changelog_path}"
+            )
+            res = run_command(cliff_cmd)
+
         if res.returncode != 0:
             print(f">>> ERROR: {res.stderr.strip()}")
             return
-
-        tag_res = run_command(f"git tag {new_tag}")
         if tag_res.returncode != 0:
             print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
             return
@@ -512,28 +530,53 @@ def release():
         else:
             new_tag = f"{path_slug}-v1.0.0"
 
-        # Changelog: generate BEFORE tagging so git-cliff sees the previous tag as
-        # "latest" and only generates the new unreleased section — not older entries.
         all_scope_msgs = all_by_scope.get(rel_path, {full_msg})
         with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
 
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
-        output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
-        cliff_cmd = (
-            f"git cliff --config {global_toml} "
-            f"--include-path '{rel_path}/**/*' "
-            f"--tag-pattern '{component_tag_pattern}' "
-            f"--unreleased "
-            f"--tag '{new_tag}' "
-            f"{with_commit_args} "
-            f"{output_flag}"
-        )
-        res = run_command(cliff_cmd)
+
+        if latest_tag:
+            # Subsequent release: generate changelog BEFORE tagging.
+            # With a previous tag present, git-cliff correctly names the new section
+            # and --prepend accumulates entries without replacing the last one.
+            cliff_cmd = (
+                f"git cliff --config {global_toml} "
+                f"--include-path '{rel_path}/**/*' "
+                f"--tag-pattern '{component_tag_pattern}' "
+                f"--unreleased "
+                f"--tag '{new_tag}' "
+                f"{with_commit_args} "
+                f"--prepend {changelog_path}"
+            )
+            res = run_command(cliff_cmd)
+            if res.returncode != 0:
+                print(f">>> ERROR for {path_slug}: {res.stderr.strip()}")
+                continue
+
+            tag_res = run_command(f"git tag {new_tag}")
+        else:
+            # First release: tag first so git-cliff can name the section correctly.
+            # No previous tag means --with-commit commits land in [unreleased] otherwise.
+            tag_res = run_command(f"git tag {new_tag}")
+            if tag_res.returncode != 0:
+                print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
+                continue
+
+            cliff_cmd = (
+                f"git cliff --config {global_toml} "
+                f"--include-path '{rel_path}/**/*' "
+                f"--tag-pattern '{component_tag_pattern}' "
+                f"--unreleased "
+                f"--tag '{new_tag}' "
+                f"{with_commit_args} "
+                f"--output {changelog_path}"
+            )
+            res = run_command(cliff_cmd)
+
         if res.returncode != 0:
             print(f">>> ERROR for {path_slug}: {res.stderr.strip()}")
             continue
 
-        tag_res = run_command(f"git tag {new_tag}")
         if tag_res.returncode != 0:
             print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
             continue
