@@ -411,7 +411,7 @@ def release():
                 f"git cliff --config {global_toml} "
                 f"--tag-pattern '{component_tag_pattern}' "
                 f"--bump --bumped-version "
-                f"--with-commit '{best_msg}'"
+                f"--with-commit '{best_msg}' --prepend"
             )
             new_tag = bumped.stdout.strip()
         else:
@@ -499,7 +499,7 @@ def release():
                 f"--include-path '{rel_path}/**/*' "
                 f"--tag-pattern '{component_tag_pattern}' "
                 f"--bump --bumped-version "
-                f"--with-commit '{full_msg}'"
+                f"--with-commit '{full_msg}' --prepend"
             )
             new_tag = bumped.stdout.strip()
         else:
