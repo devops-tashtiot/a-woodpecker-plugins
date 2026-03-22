@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Features
+
+* Initial feature
+
+
+## [harel-v6.1.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v6.1.0) - 2026-03-22 12:04
+
+## [unreleased]
+
 ### Breaking Changes
 
 * Sharedccc feature
