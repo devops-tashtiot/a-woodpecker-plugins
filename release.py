@@ -364,6 +364,7 @@ def release():
         return
 
     parsers, bump_cfg = load_cliff_parsers(global_toml)
+    _print_cliff_rules(parsers, bump_cfg)
 
     # ── depth=0: polyrepo (no scope in PR body) ───────────────────────────────
     if scope_depth == 0:
