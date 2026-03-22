@@ -530,7 +530,11 @@ def release():
         else:
             new_tag = f"{path_slug}-v1.0.0"
 
-        all_scope_msgs = all_by_scope.get(rel_path, {full_msg})
+        all_scope_msgs = sorted(
+            all_by_scope.get(rel_path, {full_msg}),
+            key=lambda m: _bump_priority(m, parsers, bump_cfg),
+            reverse=True,
+        )
         with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
 
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
