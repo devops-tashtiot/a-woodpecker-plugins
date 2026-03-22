@@ -417,11 +417,8 @@ def release():
         else:
             new_tag = "v1.0.0"
 
-        tag_res = run_command(f"git tag {new_tag}")
-        if tag_res.returncode != 0:
-            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
-            return
-
+        # Changelog: generate BEFORE tagging so git-cliff sees the previous tag as
+        # "latest" and only generates the new unreleased section — not older entries.
         changelog_path = os.path.join(root_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
         cliff_cmd = (
@@ -433,13 +430,19 @@ def release():
             f"{output_flag}"
         )
         res = run_command(cliff_cmd)
-        if res.returncode == 0:
-            print(f">>> SUCCESS: Created {new_tag}")
-            if output_tags_file:
-                with open(output_tags_file, "a") as f:
-                    f.write(f"{new_tag}\n")
-        else:
+        if res.returncode != 0:
             print(f">>> ERROR: {res.stderr.strip()}")
+            return
+
+        tag_res = run_command(f"git tag {new_tag}")
+        if tag_res.returncode != 0:
+            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
+            return
+
+        print(f">>> SUCCESS: Created {new_tag}")
+        if output_tags_file:
+            with open(output_tags_file, "a") as f:
+                f.write(f"{new_tag}\n")
         return
 
     # ── depth=1 or depth=2: monorepo / nested monorepo ───────────────────────
@@ -509,12 +512,8 @@ def release():
         else:
             new_tag = f"{path_slug}-v1.0.0"
 
-        tag_res = run_command(f"git tag {new_tag}")
-        if tag_res.returncode != 0:
-            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
-            continue
-
-        # Changelog: pass ALL commits for this scope so every change is documented
+        # Changelog: generate BEFORE tagging so git-cliff sees the previous tag as
+        # "latest" and only generates the new unreleased section — not older entries.
         all_scope_msgs = all_by_scope.get(rel_path, {full_msg})
         with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
 
@@ -530,13 +529,19 @@ def release():
             f"{output_flag}"
         )
         res = run_command(cliff_cmd)
-        if res.returncode == 0:
-            print(f">>> SUCCESS: Created {new_tag}")
-            if output_tags_file:
-                with open(output_tags_file, "a") as f:
-                    f.write(f"{new_tag}\n")
-        else:
+        if res.returncode != 0:
             print(f">>> ERROR for {path_slug}: {res.stderr.strip()}")
+            continue
+
+        tag_res = run_command(f"git tag {new_tag}")
+        if tag_res.returncode != 0:
+            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
+            continue
+
+        print(f">>> SUCCESS: Created {new_tag}")
+        if output_tags_file:
+            with open(output_tags_file, "a") as f:
+                f.write(f"{new_tag}\n")
 
 
 if __name__ == "__main__":
