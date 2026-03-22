@@ -459,7 +459,17 @@ def release():
     # Expand wildcards + apply SCOPE_EXCLUDE_REGEX to all scopes
     messages = expand_wildcard(messages, root_path, scope_depth, exclude_regex)
 
-    # Deduplicate: if same scope appears with different types, highest priority wins
+    # Keep ALL messages per scope before deduplication.
+    # The bump winner (highest priority) determines the version number,
+    # but every commit goes into the changelog — same behaviour as
+    # semantic-release, git-cliff on real history, and conventional-changelog.
+    all_by_scope = {}
+    for _m in messages:
+        _s = re.search(r'\(([^)]+)\)', _m)
+        if _s:
+            all_by_scope.setdefault(_s.group(1), set()).add(_m)
+
+    # Deduplicate: highest priority message per scope drives the version bump
     messages = deduplicate_by_scope(messages, parsers, bump_cfg)
 
     if not messages:
@@ -487,6 +497,7 @@ def release():
         component_tag_pattern = f"^{path_slug}-v[0-9]+\\.[0-9]+\\.[0-9]+$"
 
         if latest_tag:
+            # Version bump: use only the highest-priority commit (the dedup winner)
             bumped = run_command(
                 f"git cliff --config {global_toml} "
                 f"--include-path '{rel_path}/**/*' "
@@ -503,6 +514,10 @@ def release():
             print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
             continue
 
+        # Changelog: pass ALL commits for this scope so every change is documented
+        all_scope_msgs = all_by_scope.get(rel_path, {full_msg})
+        with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
+
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
         cliff_cmd = (
@@ -511,7 +526,7 @@ def release():
             f"--tag-pattern '{component_tag_pattern}' "
             f"--unreleased "
             f"--tag '{new_tag}' "
-            f"--with-commit '{full_msg}' "
+            f"{with_commit_args} "
             f"{output_flag}"
         )
         res = run_command(cliff_cmd)
