@@ -512,8 +512,12 @@ def release():
 
         # ── STEP 2: GENERATE CHANGELOG ─────────────────────────────────────
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
-        output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
-
+        if os.path.exists(changelog_path):
+            output_flag = f"--prepend {changelog_path}"
+            print(f">>> [DEBUG] CHANGELOG exists at '{changelog_path}' — using --prepend")
+        else:
+            output_flag = f"--output {changelog_path}"
+            print(f">>> [DEBUG] CHANGELOG not found at '{changelog_path}' — using --output")
 
         # HEAD..HEAD is an empty commit range — git-cliff sees zero real git commits.
         # Only --with-commit synthetic commits are processed, giving total control:
@@ -526,9 +530,12 @@ def release():
             f"--tag '{new_tag}' "
             f"{with_commit_args} "
             f"{output_flag} "
-            f"-- HEAD~1..HEAD"
+            f"-- HEAD..HEAD"
         )
+        print(f">>> [DEBUG] cliff_cmd: {cliff_cmd}")
         res = run_command(cliff_cmd)
+        print(f">>> [DEBUG] cliff stdout: {res.stdout.strip()!r}")
+        print(f">>> [DEBUG] cliff stderr: {res.stderr.strip()!r}")
 
         if res.returncode != 0:
             print(f">>> ERROR generating changelog for {path_slug}: {res.stderr.strip()}")
