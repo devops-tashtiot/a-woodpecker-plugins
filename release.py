@@ -285,6 +285,49 @@ def deduplicate_by_scope(messages, parsers=None, bump_cfg=None):
     return set(by_scope.values())
 
 
+def _print_cliff_rules(parsers, bump_cfg):
+    """
+    Prints a human-readable summary of how cliff.toml commit_parsers
+    map commit types to version bump levels.
+    """
+    print(">>> cliff.toml bump rules:")
+    print(f"    features_always_bump_minor  = {bump_cfg.get('features_always_bump_minor', True)}")
+    print(f"    breakage_always_bump_major  = {bump_cfg.get('breakage_always_bump_major', True)}")
+    custom = bump_cfg.get('custom_major_increment_regex')
+    if custom:
+        print(f"    custom_major_increment_regex = {custom}")
+
+    if not parsers:
+        print("    (no commit_parsers found — using hardcoded fallback)")
+        return
+
+    bump_labels = {3: "MAJOR", 2: "MINOR", 1: "PATCH", 0: "SKIP "}
+    print("    commit_parsers (first match wins):")
+    for p in parsers:
+        pattern = p.get('message', '?')
+        group   = p.get('group', '')
+        skip    = p.get('skip', False)
+        btype   = p.get('bump_type', '')
+
+        if skip:
+            level = 0
+        elif btype == 'major':
+            level = 3
+        elif btype == 'minor':
+            level = 2
+        elif bump_cfg.get('features_always_bump_minor', True) and 'feature' in group.lower():
+            level = 2
+        else:
+            level = 1 if not skip else 0
+
+        label = bump_labels.get(level, '?    ')
+        group_str = f" → {group}" if group else ""
+        print(f"      [{label}]  pattern={pattern!r}{group_str}")
+
+    print("    ! (bang) in commit always → MAJOR (breaking change)")
+    print("    No parser matched         → SKIP (no release)")
+
+
 def release():
     # ── Load env vars ─────────────────────────────────────────────────────────
     pr_body = os.getenv("PR_BODY", "")
@@ -300,6 +343,7 @@ def release():
         return
 
     parsers, bump_cfg = load_cliff_parsers(global_toml)
+    _print_cliff_rules(parsers, bump_cfg)
 
     # ── depth=0: polyrepo (no scope in PR body) ───────────────────────────────
     if scope_depth == 0:
