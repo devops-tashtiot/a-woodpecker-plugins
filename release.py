@@ -325,6 +325,7 @@ def _print_cliff_rules(parsers, bump_cfg):
         print(f"      [{label}]  pattern={pattern!r}{group_str}")
 
     print("    No parser matched         → SKIP (no release)")
+    print("    Note: '!' bang (e.g. feat!: or feat(scope)!:) always → MAJOR, checked before any parser — even skip types are overridden")
 
 
 def _print_message_classification(messages, parsers, bump_cfg):
@@ -352,6 +353,7 @@ def _print_message_classification(messages, parsers, bump_cfg):
                         if p.get('group'):
                             rule_str += f" → {p['group']}"
                         break
+                        
         print(f"    [{label}]  {msg!r}  ({rule_str})")
 
 
