@@ -1,5 +1,12 @@
 # Changelog
 
+## [nati-v4.0.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/nati-v4.0.0) - 2026-03-22 02:27
+
+### Breaking Changes
+
+* Shared feature
+
+
 ## [nati-v2.0.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/nati-v2.0.0) - 2026-03-22 02:25
 
 ### Features
