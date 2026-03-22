@@ -519,7 +519,7 @@ def release():
         with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
 
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
-        output_flag = f"--prepend {changelog_path}""
+        output_flag = f"--prepend {changelog_path}"
         cliff_cmd = (
             f"git cliff --config {global_toml} "
             f"--include-path '{rel_path}/**/*' "
