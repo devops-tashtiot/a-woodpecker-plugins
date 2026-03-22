@@ -5,10 +5,6 @@ clone:
       depth: 0
       tags: true
 
-when:
-  - event: pull_request
-
-
 steps:
   - name: Fetch PR body
     image: netanelzucaim123/python-git-cliff:latest
