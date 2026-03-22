@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](http://localhost:3000/netanelzucaim/semantic/releases/tag/v1.1.1) - 2026-03-22 01:12
+
+### Bug Fixes
+
+* Polyrepo bugfix
+
+
 ## [1.1.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/v1.1.0) - 2026-03-22 01:11
 
 ### Features
