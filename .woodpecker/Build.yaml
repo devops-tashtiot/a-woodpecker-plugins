@@ -24,12 +24,13 @@ steps:
         token = os.environ["GITEA_TOKEN"]
         url   = os.environ["GITEA_URL"]
         repo  = os.environ["CI_REPO"]
-        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=1&type=closed",
+        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=20",
                         headers={"Authorization": f"token {token}"})
         prs   = json.loads(urlopen(req).read())
         if not prs:
             print(">>> No closed PRs found — stopping pipeline")
             sys.exit(1)
+        prs.sort(key=lambda p: p.get("merged_at") or p.get("updated_at") or "", reverse=True)
         pr     = prs[0]
         merged = pr.get("merged", False)
         base   = pr.get("base", {}).get("ref", "")
