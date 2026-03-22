@@ -459,14 +459,7 @@ def release():
     # Expand wildcards + apply SCOPE_EXCLUDE_REGEX to all scopes
     messages = expand_wildcard(messages, root_path, scope_depth, exclude_regex)
 
-    # Keep ALL messages per scope before deduplication (for changelog output)
-    all_by_scope = {}
-    for _m in messages:
-        _s = re.search(r'\(([^)]+)\)', _m)
-        if _s:
-            all_by_scope.setdefault(_s.group(1), set()).add(_m)
-
-    # Deduplicate: highest priority message per scope drives the version bump
+    # Deduplicate: if same scope appears with different types, highest priority wins
     messages = deduplicate_by_scope(messages, parsers, bump_cfg)
 
     if not messages:
@@ -510,14 +503,6 @@ def release():
             print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
             continue
 
-        # All commits for this scope, breaking (!) first, then by priority descending
-        all_scope_msgs = sorted(
-            all_by_scope.get(rel_path, {full_msg}),
-            key=lambda m: _bump_priority(m, parsers, bump_cfg),
-            reverse=True,
-        )
-        with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
-
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
         cliff_cmd = (
@@ -526,7 +511,7 @@ def release():
             f"--tag-pattern '{component_tag_pattern}' "
             f"--unreleased "
             f"--tag '{new_tag}' "
-            f"{with_commit_args} "
+            f"--with-commit '{full_msg}' "
             f"{output_flag}"
         )
         res = run_command(cliff_cmd)
