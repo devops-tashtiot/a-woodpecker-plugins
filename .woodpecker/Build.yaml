@@ -24,7 +24,7 @@ steps:
         token = os.environ["GITEA_TOKEN"]
         url   = os.environ["GITEA_URL"]
         repo  = os.environ["CI_REPO"]
-        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=20",
+        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=200",
                         headers={"Authorization": f"token {token}"})
         prs   = json.loads(urlopen(req).read())
         if not prs:
