@@ -526,7 +526,7 @@ def release():
             f"--tag '{new_tag}' "
             f"{with_commit_args} "
             f"{output_flag} "
-            f"-- HEAD..HEAD"
+            f"-- HEAD~1..HEAD"
         )
         res = run_command(cliff_cmd)
 
