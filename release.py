@@ -520,29 +520,19 @@ def release():
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
 
 
-        # Use --unreleased when a previous tag exists (finds commits between last tag and HEAD).
-        # For the first release (no previous tag) use HEAD~0..HEAD to exclude all real git
-        # history — only the --with-commit synthetic commits are processed, preventing old
-        # CI bot commits from creating a spurious [nati-v1.0.0] section ahead of [unreleased].
-        if latest_tag:
-            cliff_cmd = (
-                f"git cliff --config {global_toml} "
-                f"--include-path '{rel_path}/**/*' "
-                f"--tag-pattern '{component_tag_pattern}' "
-                f"--unreleased --tag '{new_tag}' "
-                f"{with_commit_args} "
-                f"{output_flag}"
-            )
-        else:
-            cliff_cmd = (
-                f"git cliff --config {global_toml} "
-                f"--include-path '{rel_path}/**/*' "
-                f"--tag-pattern '{component_tag_pattern}' "
-                f"--tag '{new_tag}' "
-                f"{with_commit_args} "
-                f"{output_flag} "
-                f"-- HEAD~0..HEAD"
-            )
+        # HEAD..HEAD is an empty commit range — git-cliff sees zero real git commits.
+        # Only --with-commit synthetic commits are processed, giving total control:
+        # no duplicate commits, no interference from CI bot history, works for both
+        # first release and subsequent releases without any special-casing.
+        cliff_cmd = (
+            f"git cliff --config {global_toml} "
+            f"--include-path '{rel_path}/**/*' "
+            f"--tag-pattern '{component_tag_pattern}' "
+            f"--tag '{new_tag}' "
+            f"{with_commit_args} "
+            f"{output_flag} "
+            f"-- HEAD..HEAD"
+        )
         res = run_command(cliff_cmd)
 
         if res.returncode != 0:
