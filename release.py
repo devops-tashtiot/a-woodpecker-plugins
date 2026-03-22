@@ -233,6 +233,10 @@ def _bump_priority(msg, parsers=None, bump_cfg=None):
     by commit_parsers — first matching parser wins, same as git-cliff.
     Falls back to hardcoded logic when parsers is None or empty.
     """
+    # ! bang notation is always a breaking change (Conventional Commits standard)
+    if re.search(r'\([^)]+\)!:', msg) or re.match(r'^[a-z]+!:', msg):
+        return 3
+
     if parsers:
         bump_cfg = bump_cfg or {}
         custom_major_re = bump_cfg.get('custom_major_increment_regex')
@@ -335,7 +339,9 @@ def _print_message_classification(messages, parsers, bump_cfg):
         label = bump_labels.get(priority, "?    ")
         # Find the matched parser pattern for display
         rule_str = "no parser matched"
-        if parsers:
+        if re.search(r'\([^)]+\)!:', msg) or re.match(r'^[a-z]+!:', msg):
+            rule_str = "! bang → always MAJOR (Conventional Commits standard)"
+        elif parsers:
             custom_major_re = bump_cfg.get('custom_major_increment_regex') if bump_cfg else None
             if custom_major_re and re.search(custom_major_re, msg):
                 rule_str = f"custom_major_increment_regex={custom_major_re!r}"
