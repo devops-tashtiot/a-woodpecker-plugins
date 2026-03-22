@@ -411,30 +411,25 @@ def release():
                 f"git cliff --config {global_toml} "
                 f"--tag-pattern '{component_tag_pattern}' "
                 f"--bump --bumped-version "
-                f"--with-commit '{best_msg}' --prepend"
+                f"--with-commit '{best_msg}'"
             )
             new_tag = bumped.stdout.strip()
         else:
             new_tag = "v1.0.0"
-
-        tag_res = run_command(f"git tag {new_tag}")
-        if tag_res.returncode != 0:
-            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
-            return
 
         changelog_path = os.path.join(root_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
         cliff_cmd = (
             f"git cliff --config {global_toml} "
             f"--tag-pattern '{component_tag_pattern}' "
-            f"--unreleased "
             f"--tag '{new_tag}' "
             f"--with-commit '{best_msg}' "
-            f"{output_flag}"
+            f"{output_flag} "
+            f"-- HEAD..HEAD"
         )
         res = run_command(cliff_cmd)
         if res.returncode == 0:
-            print(f">>> SUCCESS: Created {new_tag}")
+            print(f">>> SUCCESS: Prepared {new_tag} (tag will be created after changelog commit)")
             if output_tags_file:
                 with open(output_tags_file, "a") as f:
                     f.write(f"{new_tag}\n")
@@ -539,15 +534,13 @@ def release():
             print(f">>> ERROR generating changelog for {path_slug}: {res.stderr.strip()}")
             continue
 
-        # ── STEP 3: TAG THE REPO (Only if changelog succeeded) ──────────────
-        tag_res = run_command(f"git tag {new_tag}")
-        if tag_res.returncode == 0:
-            print(f">>> SUCCESS: Created {new_tag}")
-            if output_tags_file:
-                with open(output_tags_file, "a") as f:
-                    f.write(f"{new_tag}\n")
-        else:
-            print(f">>> ERROR tagging {new_tag}: {tag_res.stderr.strip()}")
+        # ── STEP 3: RECORD TAG (created by CI after changelog commit) ──────────
+        # Tags are created in the CI "Push changelogs to Git" step so they point
+        # to the commit that includes the CHANGELOG.md changes, not the prior HEAD.
+        print(f">>> SUCCESS: Prepared {new_tag} (tag will be created after changelog commit)")
+        if output_tags_file:
+            with open(output_tags_file, "a") as f:
+                f.write(f"{new_tag}\n")
 
 
 if __name__ == "__main__":
