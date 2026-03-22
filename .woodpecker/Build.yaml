@@ -6,7 +6,7 @@ clone:
       tags: true
 
 when:
-  - event: [pull_request, pull_request_closed]
+  - event: pull_request
 
 
 steps:
