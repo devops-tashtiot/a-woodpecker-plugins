@@ -245,7 +245,11 @@ run() {
 
         local rel_path
         if ! rel_path="$(find_path_for_slug "${slug}")"; then
-            echo "WARN: No ${PLUGIN_DOCKERFILE:-Dockerfile} found for slug '${slug}' under '${base}'. Skipping." >&2
+            if [ -z "${slug}" ]; then
+                echo "WARN: Tag '${tag}' looks like a polyrepo tag (no component prefix). Expected a ${PLUGIN_DOCKERFILE:-Dockerfile} at the root of '${base}/' but none was found. Skipping." >&2
+            else
+                echo "WARN: Tag '${tag}' maps to component '${slug}' but no ${PLUGIN_DOCKERFILE:-Dockerfile} was found under '${base}/${slug}/'. Skipping." >&2
+            fi
             continue
         fi
         echo "DEBUG: resolved path='${rel_path}'" >&2
