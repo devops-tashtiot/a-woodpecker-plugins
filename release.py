@@ -69,12 +69,22 @@ def parse_pr_body(body):
     if not body:
         return release_set
 
+    scopeless_re = r"^([a-z]+)(!?):\s*(.*)"
+
     for line in body.splitlines():
-        match = re.match(pattern, line.strip(), re.IGNORECASE)
+        stripped = line.strip()
+        match = re.match(pattern, stripped, re.IGNORECASE)
         if match:
             msg_type, raw_scopes, breaking, description = match.groups()
             for scope in raw_scopes.split(','):
                 release_set.add(f"{msg_type.lower()}({scope.strip()}){breaking}: {description.strip()}")
+            continue
+
+        # Warn about scopeless lines (valid at depth=0 but not here)
+        if re.match(scopeless_re, stripped, re.IGNORECASE):
+            print(f">>> WARN: '{stripped}' — no scope found, line ignored.")
+            print(f"          SCOPE_DEPTH=1/2 requires a scope: use 'type(scope): msg'  e.g. 'fix(nati): msg'")
+            print(f"          For a single-service repo use SCOPE_DEPTH=0 instead.")
 
     return release_set
 
