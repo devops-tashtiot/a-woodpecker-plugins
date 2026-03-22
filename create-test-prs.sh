@@ -4,6 +4,19 @@
 
 set -euo pipefail
 
+# Debug helper: prints response body on non-zero exit
+curl_debug() {
+  local desc="$1"; shift
+  local response
+  response=$(curl -sf "$@" 2>&1) || {
+    echo "    [DEBUG] FAILED: $desc"
+    echo "    [DEBUG] Command: curl -sf $*"
+    echo "    [DEBUG] Response: $response"
+    return 1
+  }
+  echo "$response"
+}
+
 GITEA_URL="${GITEA_URL:-http://localhost:3000}"
 GITEA_TOKEN="${GITEA_TOKEN:-3935ecfe08a1f2baf043bde1a317b337f60650d0}"
 REPO="netanelzucaim/semantic"
@@ -26,15 +39,26 @@ declare -a TEST_CASES=(
   "test/tc8-dedup|TC8 Duplicate Lines|feat(plugins/harel): add thing\nfeat(plugins/harel): add thing"
 )
 
+# Close all open PRs
+echo "==> Closing all open PRs"
+open_prs=$(curl_debug "list open PRs" "$API/pulls?state=open&limit=50" -H "$AUTH" \
+  | python3 -c "import sys,json; [print(p['number']) for p in json.load(sys.stdin)]")
+for pr in $open_prs; do
+  curl_debug "close PR #$pr" -X PATCH "$API/pulls/$pr" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d '{"state":"closed"}' > /dev/null
+  echo "    Closed PR #$pr"
+done
+
 for entry in "${TEST_CASES[@]}"; do
   IFS="|" read -r branch title body <<< "$entry"
 
   echo "==> $branch"
 
   # Delete branch if it exists, then recreate fresh from main
-  curl -sf -X DELETE "$API/branches/$branch" \
+  curl_debug "delete branch $branch" -X DELETE "$API/branches/$branch" \
     -H "$AUTH" > /dev/null 2>&1 || true
-  curl -sf -X POST "$API/branches" \
+  curl_debug "create branch $branch" -X POST "$API/branches" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"new_branch_name\":\"$branch\",\"old_branch_name\":\"$BASE_BRANCH\"}" \
     > /dev/null
@@ -43,13 +67,13 @@ for entry in "${TEST_CASES[@]}"; do
   rand=$(head -c 6 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 6)
   trigger_file=".triggers/${branch//\//-}-${rand}"
   content=$(echo -n "$branch-$rand" | base64)
-  curl -sf -X POST "$API/contents/$trigger_file" \
+  curl_debug "create trigger file $trigger_file" -X POST "$API/contents/$trigger_file" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"message\":\"chore: trigger for $branch\",\"content\":\"$content\",\"branch\":\"$branch\"}" \
     > /dev/null 2>&1 || true
 
   # Create PR
-  pr_number=$(curl -sf -X POST "$API/pulls" \
+  pr_number=$(curl_debug "create PR for $branch" -X POST "$API/pulls" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"title\":\"$title\",\"head\":\"$branch\",\"base\":\"$BASE_BRANCH\",\"body\":\"$body\"}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('number','?'))")
