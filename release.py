@@ -364,7 +364,6 @@ def release():
         return
 
     parsers, bump_cfg = load_cliff_parsers(global_toml)
-    _print_cliff_rules(parsers, bump_cfg)
 
     # ── depth=0: polyrepo (no scope in PR body) ───────────────────────────────
     if scope_depth == 0:
@@ -372,6 +371,8 @@ def release():
         if not messages:
             print(">>> No release commits detected in PR Body.")
             return
+
+        _print_message_classification(messages, parsers, bump_cfg)
 
         # Filter out skip-only commits before picking the best
         messages = {m for m in messages if _bump_priority(m, parsers, bump_cfg) > 0}
@@ -428,6 +429,8 @@ def release():
         print(">>> No Conventional Commits detected in PR Body.")
         return
 
+    _print_message_classification(messages, parsers, bump_cfg)
+
     # Filter commits that cliff.toml marks as skip (e.g. chore, docs, ci)
     messages = {m for m in messages if _bump_priority(m, parsers, bump_cfg) > 0}
     if not messages:
@@ -443,8 +446,6 @@ def release():
     if not messages:
         print(">>> No components to release after expansion/filtering.")
         return
-
-    _print_message_classification(messages, parsers, bump_cfg)
 
     for full_msg in messages:
         path_match = re.search(r"\(([^)]+)\)", full_msg)
