@@ -373,6 +373,12 @@ def release():
             print(">>> No release commits detected in PR Body.")
             return
 
+        # Filter out skip-only commits before picking the best
+        messages = {m for m in messages if _bump_priority(m, parsers, bump_cfg) > 0}
+        if not messages:
+            print(">>> No release commits detected in PR Body.")
+            return
+
         # Pick the single highest-priority message for the version bump
         best_msg = max(messages, key=lambda m: _bump_priority(m, parsers, bump_cfg))
         component_tag_pattern = r"^v[0-9]+\.[0-9]+\.[0-9]+$"
