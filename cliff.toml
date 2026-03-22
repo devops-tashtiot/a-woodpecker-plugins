@@ -1,6 +1,6 @@
 [bump]
 features_always_bump_minor = true
-breakage_always_bump_major = true
+breakage_always_bump_major = false
 custom_major_increment_regex = "^breaking"
 
 [git]
