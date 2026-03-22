@@ -1,22 +1,9 @@
 # Changelog
 
-## [unreleased]
+## [harel-v1.0.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v1.0.0) - 2026-03-22 12:12
 
 ### Features
 
 * Initial feature
 
-
-## [harel-v6.1.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v6.1.0) - 2026-03-22 12:04
-
-## [unreleased]
-
-### Breaking Changes
-
-* Sharedccc feature
-
-* Shared feature
-
-
-## [harel-v6.0.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v6.0.0) - 2026-03-22 12:02
 
