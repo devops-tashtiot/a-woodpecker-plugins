@@ -524,8 +524,7 @@ def release():
             f"git cliff --config {global_toml} "
             f"--include-path '{rel_path}/**/*' "
             f"--tag-pattern '{component_tag_pattern}' "
-            f"--tag '{new_tag}' "
-            f"{with_commit_args} "
+            f"--unreleased --tag '{new_tag}' "                              f"{with_commit_args} "
             f"{output_flag}"
         )
         res = run_command(cliff_cmd)
