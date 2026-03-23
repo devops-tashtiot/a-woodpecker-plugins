@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/v1.2.0) - 2026-03-23 15:16
+
+### Features
+
+* Nati check
+
+
 ## [1.1.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/v1.1.0) - 2026-03-23 15:15
 
 ### Features
