@@ -1,6 +1,5 @@
 clone:
   git:
-    image: woodpeckerci/plugin-git
     settings:
       depth: 0
       tags: true
@@ -127,4 +126,5 @@ steps:
       PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "local"
       PLUGIN_PASSWORD: "local"
+
 
