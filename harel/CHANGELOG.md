@@ -1,5 +1,17 @@
 # Changelog
 
+## [harel-v4.1.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v4.1.0) - 2026-03-23 14:55
+
+### Bug Fixes
+
+* Add new dashboard
+
+
+### Features
+
+* Redesign api
+
+
 ## [harel-v4.0.1](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v4.0.1) - 2026-03-23 14:54
 
 ### Bug Fixes
