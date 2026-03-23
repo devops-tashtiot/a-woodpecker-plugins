@@ -403,19 +403,31 @@ def release():
         best_msg = max(messages, key=lambda m: _bump_priority(m, parsers, bump_cfg))
         component_tag_pattern = r"^v[0-9]+\.[0-9]+\.[0-9]+$"
 
-        existing_tags = run_command("git tag -l 'v*' --sort=-version:refname")
-        latest_tag = existing_tags.stdout.strip().splitlines()[0] if existing_tags.stdout.strip() else None
+        existing_tags_result = run_command("git tag -l 'v*' --sort=-version:refname")
+        all_matching_tags = existing_tags_result.stdout.strip().splitlines()
+        latest_tag = all_matching_tags[0] if all_matching_tags else None
+
+        print(f">>> [DEBUG] Tag pattern:       'v*'")
+        print(f">>> [DEBUG] All matching tags: {all_matching_tags or '(none)'}")
+        print(f">>> [DEBUG] Latest tag (base): {latest_tag or '(none — first release → will use v1.0.0)'}")
+        print(f">>> [DEBUG] Best commit for bump: {best_msg!r}")
 
         if latest_tag:
-            bumped = run_command(
+            bump_cmd = (
                 f"git cliff --config {global_toml} "
                 f"--tag-pattern '{component_tag_pattern}' "
                 f"--bump --bumped-version "
                 f"--with-commit '{best_msg}'"
             )
+            print(f">>> [DEBUG] bump_cmd: {bump_cmd}")
+            bumped = run_command(bump_cmd)
+            print(f">>> [DEBUG] bump stdout: {bumped.stdout.strip()!r}")
+            print(f">>> [DEBUG] bump stderr: {bumped.stderr.strip()!r}")
             new_tag = bumped.stdout.strip()
+            print(f">>> [DEBUG] Calculated new_tag: {new_tag!r}")
         else:
             new_tag = "v1.0.0"
+            print(f">>> [DEBUG] No existing tag found — defaulting to first release: {new_tag}")
 
         changelog_path = os.path.join(root_path, 'CHANGELOG.md')
         output_flag = f"--prepend {changelog_path}" if os.path.exists(changelog_path) else f"--output {changelog_path}"
@@ -483,9 +495,14 @@ def release():
         path_slug = rel_path.replace("/", "-").replace("\\", "-")
         print(f"--- Processing: {path_slug} ---")
 
-        existing_tags = run_command(f"git tag -l '{path_slug}-v*' --sort=-version:refname")
-        latest_tag = existing_tags.stdout.strip().splitlines()[0] if existing_tags.stdout.strip() else None
+        existing_tags_result = run_command(f"git tag -l '{path_slug}-v*' --sort=-version:refname")
+        all_matching_tags = existing_tags_result.stdout.strip().splitlines()
+        latest_tag = all_matching_tags[0] if all_matching_tags else None
         component_tag_pattern = f"^{path_slug}-v[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+        print(f">>> [DEBUG] Tag pattern:       '{path_slug}-v*'")
+        print(f">>> [DEBUG] All matching tags: {all_matching_tags or '(none)'}")
+        print(f">>> [DEBUG] Latest tag (base): {latest_tag or '(none — first release → will use v1.0.0)'}")
 
         # Get ALL messages for this scope to ensure accurate bumping and logging
         all_scope_msgs = sorted(
@@ -494,6 +511,7 @@ def release():
             reverse=True,
         )
         with_commit_args = " ".join(f"--with-commit '{m}'" for m in all_scope_msgs)
+        print(f">>> [DEBUG] Commits passed to git-cliff: {all_scope_msgs}")
 
         # ── STEP 1: CALCULATE VERSION ──────────────────────────────────────
         if latest_tag:
@@ -505,10 +523,15 @@ def release():
                 f"--bump --bumped-version "
                 f"{with_commit_args}"
             )
+            print(f">>> [DEBUG] bump_cmd: {bump_cmd}")
             bumped = run_command(bump_cmd)
+            print(f">>> [DEBUG] bump stdout: {bumped.stdout.strip()!r}")
+            print(f">>> [DEBUG] bump stderr: {bumped.stderr.strip()!r}")
             new_tag = bumped.stdout.strip()
+            print(f">>> [DEBUG] Calculated new_tag: {new_tag!r}")
         else:
             new_tag = f"{path_slug}-v1.0.0"
+            print(f">>> [DEBUG] No existing tag found — defaulting to first release: {new_tag}")
 
         # ── STEP 2: GENERATE CHANGELOG ─────────────────────────────────────
         changelog_path = os.path.join(full_path, 'CHANGELOG.md')
