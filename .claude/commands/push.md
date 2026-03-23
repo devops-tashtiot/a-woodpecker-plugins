@@ -11,15 +11,17 @@ Run the following steps in order inside the `semantic/` directory:
    ```
 
 
-4. Stage all changes and commit with message "update":
+3. Stage all changes and commit with message "update":
    ```
    git add -A && git commit -m "update" || echo "nothing to commit"
    ```
 
-5. Push local commits to main:
+4. Push local commits to main:
    ```
    git push origin main
    ```
 
 
 After each step, report the output to the user. If any step fails, stop and explain the error.
+
+
