@@ -1,5 +1,17 @@
 # Changelog
 
+## [harel-v4.3.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v4.3.0) - 2026-03-23 15:01
+
+### Bug Fixes
+
+* Add new dashboard  feat(nati):djdjd
+
+
+### Features
+
+* Redesign api
+
+
 ## [harel-v4.2.0](http://localhost:3000/netanelzucaim/semantic/releases/tag/harel-v4.2.0) - 2026-03-23 14:59
 
 ### Bug Fixes
