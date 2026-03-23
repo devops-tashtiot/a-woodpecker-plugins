@@ -1,6 +1,6 @@
 clone:
   git:
-    image: 10.89.0.1:5000/woodpeckerci/plugin-git:latest
+    image: woodpeckerci/plugin-git
     settings:
       depth: 0
       tags: true
