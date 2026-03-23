@@ -172,3 +172,5 @@ Environment constants: `GITEA_TOKEN`, `GITEA_URL`, `PLUGIN_REGISTRY`, `PLUGIN_RE
   2. `./test_release_docker.sh` — must show `Results: 114 passed, 0 failed`
 - **Error Handling:** If either test fails, stop and report the logs. Do not proceed until tests pass.
 - **Note:** `test_release_docker.sh` requires Docker and the home directory to be traversable by the Docker daemon (`chmod o+x /home/netanelzucaim`).
+
+
