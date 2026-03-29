@@ -6,7 +6,7 @@ clone:
       tags: true
 
 when:
-  - event: pull_request,manual
+  - event: [pull_request,manual]
 
 steps:
   - name: Fetch PR body
