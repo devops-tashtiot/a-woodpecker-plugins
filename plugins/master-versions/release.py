@@ -352,7 +352,7 @@ def release():
         if latest_tag:
             bump_cmd = " ".join(filter(None, [
                 f"git cliff --config {global_toml}",
-                # include_path_flag,
+                include_path_flag,
                 f"--tag-pattern '{component_tag_pattern}'",
                 "--bump --bumped-version",
                 with_commit_args,
@@ -397,7 +397,7 @@ def release():
 
         cliff_cmd = " ".join(filter(None, [
             f"git cliff --config {global_toml}",
-            # include_path_flag,
+            include_path_flag,
             f"--tag-pattern '{component_tag_pattern}'",
             f"--tag '{new_tag}'",
             with_commit_args,
