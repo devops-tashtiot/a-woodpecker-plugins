@@ -13,17 +13,11 @@ steps:
   - name: Write message to file
     image: alpine
     environment:
-      RELEASE_MESSAGE:
-        from_secret: RELEASE_MESSAGE
+      RELEASE_MESSAGE: ${release_message}
     commands:
-      - |
-        if [ -z "$RELEASE_MESSAGE" ]; then
-          echo ">>> RELEASE_MESSAGE is empty — stopping pipeline"
-          exit 1
-        fi
-        echo "$RELEASE_MESSAGE" > pr_body.txt
-        echo ">>> Message written to pr_body.txt:"
-        cat pr_body.txt
+      - '[ -n "$RELEASE_MESSAGE" ] || { echo ">>> ERROR: RELEASE_MESSAGE is empty — stopping pipeline"; exit 1; }'
+      - printf "%s" "$RELEASE_MESSAGE" > pr_body.txt
+      - echo ">>> Message written to pr_body.txt:" && cat pr_body.txt
 
   - name: Run release
     image: netanelzucaim123/master-versions:latest
@@ -97,6 +91,7 @@ steps:
       - echo ">>> PLUGIN_BASE=$PLUGIN_BASE"
       - /app/plugin.sh
     environment:
+      DRY_RUN: true
       PLUGIN_BASE: "."
       PLUGIN_REGISTRY: "10.89.0.1:5000"
       PLUGIN_REPO: ""
