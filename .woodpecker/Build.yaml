@@ -47,7 +47,7 @@ steps:
       PLUGIN_BASE: "."
       PLUGIN_SCOPE_EXCLUDE_REGEX: ""
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
-      GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
+      GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - export PLUGIN_MESSAGE="$(cat pr_body.txt)"
@@ -82,7 +82,7 @@ steps:
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
-      - git remote set-url origin "http://ci-bot:3935ecfe08a1f2baf043bde1a317b337f60650d0@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
+      - git remote set-url origin "http://ci-bot:48900285bf3075ce084699656ddf5ac7b88685a8@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
       - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
       - |
         if ! git diff --cached --quiet; then
