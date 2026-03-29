@@ -13,7 +13,7 @@ steps:
   - name: Write message to file
     image: alpine
     environment:
-      RELEASE_MESSAGE: ${release_message}
+      RELEASE_MESSAGE: "${RELEASE_MESSAGE}"
     commands:
       - '[ -n "$RELEASE_MESSAGE" ] || { echo ">>> ERROR: RELEASE_MESSAGE is empty — stopping pipeline"; exit 1; }'
       - printf "%s" "$RELEASE_MESSAGE" > pr_body.txt
