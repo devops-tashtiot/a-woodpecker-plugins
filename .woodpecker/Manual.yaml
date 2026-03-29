@@ -7,7 +7,7 @@ clone:
 
 when:
   - event: manual
-
+    branch: check
 
 steps:
   - name: Write message to file
