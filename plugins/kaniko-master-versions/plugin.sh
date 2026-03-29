@@ -4,9 +4,9 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────────
-# kaniko-monorepo-cliff
+# kaniko-master-versions
 #
-# Reads tags produced by release.py, resolves each tag to a Dockerfile, and
+# Reads tags produced by master-versions plugin, resolves each tag to a Dockerfile, and
 # builds + pushes the image via /kaniko/executor.
 #
 # Required:
@@ -66,7 +66,7 @@ setup_docker_auth() {
 DOCKERJSON
     echo "DEBUG: Docker auth configured for ${PLUGIN_REGISTRY:-index.docker.io}" >&2
 }
-
+#TODO: adjust to plugin_prefix
 # Extract the version from the END of a tag.
 # Matches: v1.2.3 / 1.2.3 / v1.8 / 1.8 etc.
 extract_version() {
@@ -90,6 +90,7 @@ extract_slug() {
 
     printf '%s' "${slug}"
 }
+
 
 # Given a slug, scan PLUGIN_BASE for a Dockerfile whose parent directory
 # converts to that slug (replacing "/" with "-").
@@ -246,7 +247,7 @@ run() {
         local rel_path
         if ! rel_path="$(find_path_for_slug "${slug}")"; then
             if [ -z "${slug}" ]; then
-                echo "WARN: Tag '${tag}' looks like a polyrepo tag (no component prefix). Expected a ${PLUGIN_DOCKERFILE:-Dockerfile} at the root of '${base}/' but none was found. Skipping." >&2
+                echo "WARN: Tag '${tag}' . Expected a ${PLUGIN_DOCKERFILE:-Dockerfile} at the root of '${base}/' but none was found. Skipping." >&2
             else
                 echo "WARN: Tag '${tag}' maps to component '${slug}' but no ${PLUGIN_DOCKERFILE:-Dockerfile} was found under '${base}/${slug}/'. Skipping." >&2
             fi
@@ -259,11 +260,11 @@ run() {
 }
 
 main() {
-    echo "--- KANIKO MONOREPO CLIFF PLUGIN START ---" >&2
+    echo "--- KANIKO MASTER VERSIONS PLUGIN START ---" >&2
     validate_required
     setup_docker_auth
     run
-    echo "--- KANIKO MONOREPO CLIFF PLUGIN DONE ---" >&2
+    echo "--- KANIKO MASTER VERSIONS PLUGIN DONE ---" >&2
 }
 
 main

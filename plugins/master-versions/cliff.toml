@@ -9,10 +9,15 @@ filter_unconventional = true
 limit_commits_to_path = true
 tag_pattern = "[a-zA-Z0-9-]+-v[0-9]+\\.[0-9]+\\.[0-9]+$"
 commit_parsers = [
-  { message = "^breaking", group = "Breaking Changes", bump_type = "major" },
-  { message = "^feat", group = "Features" },
-  { message = "^fix", group = "Bug Fixes" },
-  { message = ".*", skip = true },
+#the order is importand - priority by order!
+  { message = "^breaking\\((.*?)\\)", group = "Breaking Changes", bump_type = "major" },
+  { message = "^breaking",            group = "Breaking Changes", bump_type = "major" },
+  { message = "^feat\\((.*?)\\)",     group = "Features" },
+  { message = "^feat",                group = "Features" },
+  { message = "^fix\\((.*?)\\)",      group = "Bug Fixes" },
+  { message = "^fix",                 group = "Bug Fixes" },
+  { message = "^other\\((.*?)\\)",    skip = true },
+  { message = "^other",               skip = true },
 ]
 
 [changelog]
@@ -32,4 +37,3 @@ body = """
     {% endfor %}
 {% endfor %}\n
 """
-

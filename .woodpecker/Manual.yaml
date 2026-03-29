@@ -6,42 +6,24 @@ clone:
       tags: true
 
 when:
-  - event: push
-    branch: main
+  - event: manual
 
 
 steps:
-  - name: Fetch PR body
-    image: netanelzucaim123/python-git-cliff:latest
+  - name: Write message to file
+    image: alpine
     environment:
-      GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
-      GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
+      RELEASE_MESSAGE:
+        from_secret: RELEASE_MESSAGE
     commands:
       - |
-        python3 - <<'EOF'
-        import json, os, sys
-        from urllib.request import urlopen, Request
-        token = os.environ["GITEA_TOKEN"]
-        url   = os.environ["GITEA_URL"]
-        repo  = os.environ["CI_REPO"]
-        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=200",
-                        headers={"Authorization": f"token {token}"})
-        prs   = json.loads(urlopen(req).read())
-        if not prs:
-            print(">>> No closed PRs found — stopping pipeline")
-            sys.exit(1)
-        prs.sort(key=lambda p: p.get("merged_at") or p.get("updated_at") or "", reverse=True)
-        pr     = prs[0]
-        merged = pr.get("merged", False)
-        base   = pr.get("base", {}).get("ref", "")
-        print(f">>> Latest closed PR #{pr['number']} — merged={merged}, base={base}")
-        if not merged or base != "main":
-            print(">>> Last PR was not merged into main — stopping pipeline")
-            sys.exit(1)
-        body = pr.get("body", "")
-        open("pr_body.txt", "w").write(body)
-        print(">>> PR Body:\n" + body)
-        EOF
+        if [ -z "$RELEASE_MESSAGE" ]; then
+          echo ">>> RELEASE_MESSAGE is empty — stopping pipeline"
+          exit 1
+        fi
+        echo "$RELEASE_MESSAGE" > pr_body.txt
+        echo ">>> Message written to pr_body.txt:"
+        cat pr_body.txt
 
   - name: Run release
     image: netanelzucaim123/master-versions:latest
@@ -51,6 +33,7 @@ steps:
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
+      DRY_RUN: true
     commands:
       - export PLUGIN_MESSAGE="$(cat pr_body.txt)"
       - |
@@ -94,9 +77,6 @@ steps:
           echo "No changelog changes to commit."
         fi
       - |
-        # Create each tag pointing to the current HEAD (the changelog commit).
-        # This ensures tags reference the commit that includes CHANGELOG.md changes,
-        # not the prior HEAD that release.py ran against.
         while IFS= read -r tag; do
           [ -n "$tag" ] || continue
           git tag -f "$tag"
@@ -126,7 +106,3 @@ steps:
       PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "local"
       PLUGIN_PASSWORD: "local"
-
-
-
-

@@ -16,7 +16,8 @@ concatenate_strings() {
 
     echo "${_STR1}"
 }
-
+#TODO: change plugin_prefix to a variable that can be only v like prefix_v or something and update readme as well - give me something smart!
+#TODO: make sure the i also catch if user not entered a scope - so it still catched in the regex and update readme as well
 # Load environment variables from a file
 load_environment() {
     echo "DEBUG: Entering load_environment" >&2
