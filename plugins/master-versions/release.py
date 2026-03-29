@@ -267,8 +267,7 @@ def release():
     initial_tag_version = os.getenv("PLUGIN_INITIAL_TAG", "1.0.0").lstrip("v")
     version_prefix      = "v" if os.getenv("PLUGIN_V_PREFIX", "").lower() == "true" else ""
 
-    _script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in dir() else os.getcwd()
-    global_toml = os.getenv("PLUGIN_CLIFF_TOML", "") or os.path.join(_script_dir, "cliff.toml")
+    global_toml = os.getenv("PLUGIN_CLIFF_TOML", os.path.join(os.path.dirname(__file__), "cliff.toml"))
 
     if dry_run:
         print(">>> DRY RUN mode — no changelog files will be written, no tags recorded")
