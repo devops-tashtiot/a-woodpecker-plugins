@@ -356,6 +356,7 @@ def release():
                 f"--tag-pattern '{component_tag_pattern}'",
                 "--bump --bumped-version",
                 with_commit_args,
+                "-- HEAD..HEAD",
             ]))
 
             if debug:
