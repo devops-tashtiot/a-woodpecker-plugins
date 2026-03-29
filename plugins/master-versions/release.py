@@ -269,6 +269,7 @@ def release():
 
     _bundled_toml = os.path.join(os.path.dirname(__file__), "cliff.toml")
     global_toml   = os.getenv("PLUGIN_CLIFF_TOML") or ("./cliff.toml" if os.path.exists("./cliff.toml") else _bundled_toml)
+    cliff_cmd_base = f"git cliff --config {global_toml}" + (" -vv" if debug else "")
 
     if dry_run:
         print(">>> DRY RUN mode — no changelog files will be written, no tags recorded")
@@ -311,14 +312,12 @@ def release():
             tag_prefix            = version_prefix
             tag_glob              = f"{version_prefix}[0-9]*"
             component_tag_pattern = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
-            include_path_flag     = ""
             full_path             = os.path.normpath(root_path)
         else:
             path_slug             = location.replace("/", "-").replace("\\", "-")
             tag_prefix            = f"{path_slug}-{version_prefix}"
             tag_glob              = f"{path_slug}-{version_prefix}[0-9]*"
             component_tag_pattern = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
-            include_path_flag     = f"--include-path '{location}/**/*'"
             full_path             = os.path.normpath(os.path.join(root_path, location))
 
         display_name = location if location else "(root)"
@@ -351,8 +350,7 @@ def release():
         # ── STEP 2: CALCULATE VERSION ─────────────────────────────────────────
         if latest_tag:
             bump_cmd = " ".join(filter(None, [
-                f"git cliff --config {global_toml}",
-                include_path_flag,
+                cliff_cmd_base,
                 f"--tag-pattern '{component_tag_pattern}'",
                 "--bump --bumped-version",
                 with_commit_args,
@@ -396,8 +394,7 @@ def release():
                 print(f">>> [DEBUG] CHANGELOG not found — using --output")
 
         cliff_cmd = " ".join(filter(None, [
-            f"git cliff --config {global_toml}",
-            include_path_flag,
+            cliff_cmd_base,
             f"--tag-pattern '{component_tag_pattern}'",
             f"--tag '{new_tag}'",
             with_commit_args,

@@ -9,7 +9,7 @@ filter_unconventional = true
 limit_commits_to_path = true
 tag_pattern = "[a-zA-Z0-9-]+-v[0-9]+\\.[0-9]+\\.[0-9]+$"
 commit_parsers = [
-#the order is importand - priority by order!
+#the order is important - priority by order!
   { message = "^breaking\\((.*?)\\)", group = "Breaking Changes", bump_type = "major" },
   { message = "^breaking",            group = "Breaking Changes", bump_type = "major" },
   { message = "^feat\\((.*?)\\)",     group = "Features" },
@@ -26,14 +26,14 @@ header = """
 """
 body = """
 {% if version %}\
-    ## [{{ version | trim_start_matches(pat="v") }}]({{ env.CI_REPO_LINK | default(value="http://localhost:3000/netanelzucaim/master-versions") }}/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
+    ## [{{ version | trim_start_matches(pat="v") }}]({{ env.CI_REPO_LINK | default(value="") }}/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
 {% else %}\
     ## [unreleased]
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | upper_first }}
     {% for commit in commits %}
-        * {{ commit.message | upper_first }}
+        * {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}
     {% endfor %}
 {% endfor %}\n
 """

@@ -888,6 +888,7 @@ class TestCliffTomlResolution(unittest.TestCase):
              patch("os.path.exists", side_effect=fake_exists), \
              patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
              patch("os.listdir", return_value=[]), \
+             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
              patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
             release()
 
