@@ -12,7 +12,7 @@ steps:
   - name: Fetch PR body
     image: netanelzucaim123/python-git-cliff:latest
     environment:
-      GITEA_TOKEN: 3935ecfe08a1f2baf043bde1a317b337f60650d0
+      GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - |
