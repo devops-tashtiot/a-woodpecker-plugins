@@ -264,7 +264,7 @@ To make `chore` releasable, add it to `cliff.toml`:
 | `PLUGIN_DEBUG` | `false` | `true` → detailed debug output for every git-cliff command and its result. Only `true` or `false` are valid values. |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version for the first release of a component that has no existing tag |
 | `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prepend `v` to the version number. `true` → `nati-v1.0.0`, unset/false → `nati-1.0.0` |
-| `PLUGIN_CLIFF_TOML` | *(bundled)* | Path to a custom `cliff.toml`. Defaults to the one bundled in the image. |
+| `PLUGIN_CLIFF_TOML` | *(see below)* | Path to a custom `cliff.toml`. Resolution order: (1) this variable if set, (2) `./cliff.toml` in the working directory if it exists, (3) the `cliff.toml` bundled in the Docker image. |
 
 #### `PLUGIN_BASE` examples
 

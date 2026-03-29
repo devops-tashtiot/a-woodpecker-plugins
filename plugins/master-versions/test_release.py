@@ -6,6 +6,7 @@ import types
 
 _src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release.py")
 release_module = types.ModuleType("release")
+release_module.__file__ = _src_path
 with open(_src_path) as _f:
     exec(compile(_f.read(), _src_path, "exec"), release_module.__dict__)
 
@@ -839,6 +840,87 @@ class TestRelease(unittest.TestCase):
             )
         except Exception as e:
             self.fail(f"release() raised an exception on cliff failure: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Class 5 — TestCliffTomlResolution
+#
+# Verifies the three-tier cliff.toml lookup in release():
+#   1. PLUGIN_CLIFF_TOML explicitly set → use that path
+#   2. ./cliff.toml exists in the working directory → use it
+#   3. Neither → fall back to the bundled cliff.toml next to release.py
+# ---------------------------------------------------------------------------
+
+class TestCliffTomlResolution(unittest.TestCase):
+
+    def _run_with_toml_env(self, cliff_toml_env, workspace_has_cliff):
+        """
+        Calls release() and returns the --config path used in git-cliff commands.
+        cliff_toml_env  : value for PLUGIN_CLIFF_TOML ("" means not set)
+        workspace_has_cliff : whether ./cliff.toml exists in the working dir
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "nati-1.1.0"
+        mock_result.stderr = ""
+
+        bundled = os.path.join(os.path.dirname(_src_path), "cliff.toml")
+
+        def fake_exists(p):
+            if p == "./cliff.toml":
+                return workspace_has_cliff
+            return True  # everything else (dirs, changelog, etc.) exists
+
+        env = {
+            "PLUGIN_MESSAGE":           "feat(auth)[nati]: add login",
+            "PLUGIN_BASE":              "/repo",
+            "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
+            "PLUGIN_DRY_RUN":           "",
+            "PLUGIN_OUTPUT_TAGS_FILE":  "",
+            "PLUGIN_DEBUG":             "false",
+        }
+        if cliff_toml_env:
+            env["PLUGIN_CLIFF_TOML"] = cliff_toml_env
+        else:
+            env.pop("PLUGIN_CLIFF_TOML", None)
+
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", side_effect=fake_exists), \
+             patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
+             patch("os.listdir", return_value=[]), \
+             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            release()
+
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        # extract the --config <path> value from the recorded calls
+        import re as _re
+        m = _re.search(r"--config\s+(\S+)", calls_str)
+        return m.group(1) if m else None
+
+    def test_1_explicit_plugin_cliff_toml_used(self):
+        """
+        Checks: when PLUGIN_CLIFF_TOML is set, that path is passed to git-cliff
+                regardless of whether ./cliff.toml exists.
+        """
+        used = self._run_with_toml_env("/custom/my.toml", workspace_has_cliff=True)
+        self.assertEqual(used, "/custom/my.toml")
+
+    def test_2_workspace_cliff_toml_used_when_present(self):
+        """
+        Checks: when PLUGIN_CLIFF_TOML is not set but ./cliff.toml exists,
+                git-cliff is invoked with ./cliff.toml.
+        """
+        used = self._run_with_toml_env("", workspace_has_cliff=True)
+        self.assertEqual(used, "./cliff.toml")
+
+    def test_3_bundled_cliff_toml_used_as_last_resort(self):
+        """
+        Checks: when PLUGIN_CLIFF_TOML is not set and ./cliff.toml is absent,
+                git-cliff is invoked with the bundled cliff.toml (next to release.py).
+        """
+        bundled = os.path.join(os.path.dirname(_src_path), "cliff.toml")
+        used = self._run_with_toml_env("", workspace_has_cliff=False)
+        self.assertEqual(used, bundled)
 
 
 if __name__ == "__main__":
