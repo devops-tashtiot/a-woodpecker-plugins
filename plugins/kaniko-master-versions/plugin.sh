@@ -200,8 +200,9 @@ ALIASES
     echo "Aliases   : ${PLUGIN_ALIASES:-(none)}"
     echo "Context   : ${context}"
     echo "Dockerfile: ${context}/${dockerfile_name}"
+    echo "DEBUG: raw destinations='${destinations}'" >&2
     echo "Destinations:"
-    printf '%s\n' "${destinations}" | tr ' ' '\n' | grep '^--destination' | sed 's/--destination=/  /' || true
+    printf '%s\n' "${destinations}" | tr ' ' '\n' | sed -n 's/^--destination=//p' | sed 's/^/  /'
     [ "${PLUGIN_DRY_RUN:-}" = "true" ] && echo "  (dry-run — no push)"
     echo "================================================================"
 

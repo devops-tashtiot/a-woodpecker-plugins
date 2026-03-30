@@ -78,7 +78,7 @@ steps:
       - git push --force --tags origin
 
   - name: Build and push plugin images
-    image: netanelzucaim123/kaniko-monorepo-cliff:latest
+    image: netanelzucaim123/kaniko-master-versions:latest
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
