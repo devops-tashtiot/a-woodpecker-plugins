@@ -63,6 +63,45 @@ steps:
       - echo ">>> PLUGIN_BASE=$PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
       - python3 /app/release.py
       - echo ">>> New tags:" && cat new_tags.txt || echo "No tags created"
+  
+  - name: Push changelogs to Git
+    image: alpine/git
+    environment:
+      PLUGIN_BASE: "."
+      SCOPE_DEPTH: "1"
+    commands:
+      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
+      - |
+        for var in SCOPE_DEPTH PLUGIN_BASE; do
+          val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
+          if [ -n "$val" ]; then
+            export "$var=$val"
+            echo ">>> Override: $var=$val"
+          fi
+        done
+      - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE"
+      - git config --global user.email "ci-bot@example.com"
+      - git config --global user.name "CI Bot"
+      - git config --global safe.directory '*'
+      - git remote set-url origin "http://ci-bot:48900285bf3075ce084699656ddf5ac7b88685a8@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
+      - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
+      - |
+        if ! git diff --cached --quiet; then
+          git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
+          git push --force origin HEAD:main
+        else
+          echo "No changelog changes to commit."
+        fi
+      - |
+        # Create each tag pointing to the current HEAD (the changelog commit).
+        # This ensures tags reference the commit that includes CHANGELOG.md changes,
+        # not the prior HEAD that release.py ran against.
+        while IFS= read -r tag; do
+          [ -n "$tag" ] || continue
+          git tag -f "$tag"
+          echo ">>> Tagged: $tag → $(git rev-parse --short HEAD)"
+        done < new_tags.txt
+      - git push --force --tags origin
 
   - name: Build and push plugin images
     image: netanelzucaim123/kaniko-monorepo-cliff:latest
