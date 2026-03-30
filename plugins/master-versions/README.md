@@ -6,6 +6,112 @@ component, and records created tags to an output file for downstream steps.
 
 ---
 
+## What is git-cliff?
+
+git-cliff is a changelog generator that reads **conventional commits** and produces structured `CHANGELOG.md` files. It also calculates the next semantic version based on the types of changes present (patch / minor / major).
+
+It works by:
+1. Scanning git history (or receiving commits directly via `--with-commit`)
+2. Matching each commit message against configured patterns (`commit_parsers`)
+3. Grouping matched commits into changelog sections (e.g. Features, Bug Fixes)
+4. Applying a Tera template to render the final output
+
+### How this repo uses git-cliff
+
+This plugin does **not** feed git-cliff a git log. Instead it uses git-cliff in **stateless mode**:
+
+- `--with-commit` injects the exact commit string from `PLUGIN_MESSAGE` directly — git history is bypassed entirely
+- `--tag-pattern` restricts git-cliff to only look at tags belonging to the current component (e.g. `^nati-[0-9]+\.[0-9]+\.[0-9]+$`)
+- `--bump --bumped-version` asks git-cliff to calculate the next version from the injected commit(s), using the last matching tag as the base
+- `--tag` sets the new version label when generating the changelog body
+
+This means the PR body is the **single source of truth** — the same run produces the same result regardless of what is or isn't in git history.
+
+---
+
+## cliff.toml explained
+
+The `cliff.toml` file controls all of git-cliff's behaviour.
+
+### `[bump]` — version increment rules
+
+```toml
+[bump]
+features_always_bump_minor = true
+breakage_always_bump_major = true
+custom_major_increment_regex = "^breaking"
+```
+
+| Parameter | What it does |
+|-----------|-------------|
+| `features_always_bump_minor` | Any commit in the `Features` group always bumps **minor**, even if git-cliff's default logic would only produce a patch. |
+| `breakage_always_bump_major` | Any commit in the `Breaking Changes` group always bumps **major**. |
+| `custom_major_increment_regex` | Extra regex applied to the raw commit message. Any commit matching `^breaking` forces a **major** bump — catches `breaking(...)` and `breaking:` before the parser table is consulted. |
+
+---
+
+### `[git]` — commit parsing and tag isolation
+
+```toml
+[git]
+conventional_commits = true
+filter_unconventional = true
+tag_pattern = "[a-zA-Z0-9-]+-v[0-9]+\.[0-9]+\.[0-9]+$"
+commit_parsers = [ ... ]
+```
+
+| Parameter | What it does |
+|-----------|-------------|
+| `conventional_commits` | Enables conventional commit parsing (`type(scope): description`). Without this, commit grouping and bump calculation do not work. |
+| `filter_unconventional` | Commits that do not match any `commit_parsers` entry are silently dropped — no changelog entry, no version bump. |
+| `tag_pattern` | Default pattern git-cliff uses to discover existing version tags. Overridden at runtime by `release.py` with a component-specific pattern (e.g. `^nati-[0-9]+\.[0-9]+\.[0-9]+$`) so each component only sees its own tags. |
+
+#### `commit_parsers` — type recognition table
+
+```toml
+commit_parsers = [
+  { message = "^breaking\\((.*?)\\)", group = "Breaking Changes", bump_type = "major" },
+  { message = "^breaking",            group = "Breaking Changes", bump_type = "major" },
+  { message = "^feat\\((.*?)\\)",     group = "Features" },
+  { message = "^feat",                group = "Features" },
+  { message = "^fix\\((.*?)\\)",      group = "Bug Fixes" },
+  { message = "^fix",                 group = "Bug Fixes" },
+  { message = "^other\\((.*?)\\)",    skip = true },
+  { message = "^other",               skip = true },
+]
+```
+
+**Order matters — first match wins.** Each entry has:
+
+| Field | Meaning |
+|-------|---------|
+| `message` | Regex matched against the start of the raw commit message. Scoped variants (with `(.*?)`) come before bare variants so `feat(scope): ...` does not accidentally match just `^feat`. |
+| `group` | The changelog section heading this commit type appears under. |
+| `bump_type` | Explicitly sets the bump level (`"major"`, `"minor"`, `"patch"`). If omitted, the level is inferred from the group name combined with the `[bump]` rules above. |
+| `skip = true` | Commit is dropped entirely — no changelog entry, no version bump. Used for `other`, a deliberate no-op marker. |
+
+Any commit type not listed here is also dropped. To add a new type (e.g. `chore`), add a new entry to this table.
+
+---
+
+### `[changelog]` — output template
+
+| Parameter | What it does |
+|-----------|-------------|
+| `header` | Written once at the top of a newly created `CHANGELOG.md`. Skipped in prepend mode since the header already exists. |
+| `body` | Tera template rendered once per release. Has access to `version`, `timestamp`, `commits`, and environment variables via `get_env(name="VAR", default="")`. |
+
+Key template variables used in `body`:
+
+| Variable | Value |
+|----------|-------|
+| `version` | The new tag string (e.g. `nati-1.6.0`). `trim_start_matches(pat="v")` strips a leading `v` so the display reads `1.6.0`. |
+| `timestamp` | Unix timestamp of the release moment, formatted via `date(format=...)`. |
+| `commits` | List of commit objects with `.group`, `.scope`, `.message`. Grouped with `group_by(attribute="group")` to produce per-section lists. |
+| `get_env(name="CI_REPO_LINK", default="")` | Reads `CI_REPO_LINK` at render time to build the release URL. Falls back to empty string if not set. |
+
+---
+
 ## Message format
 
 ```

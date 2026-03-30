@@ -27,7 +27,7 @@ steps:
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
-      DRY_RUN: true
+      PLUGIN_DRY_RUN: true
     commands:
       - export PLUGIN_MESSAGE="$(cat pr_body.txt)"
       - |
@@ -91,7 +91,7 @@ steps:
       - echo ">>> PLUGIN_BASE=$PLUGIN_BASE"
       - /app/plugin.sh
     environment:
-      DRY_RUN: true
+      PLUGIN_DRY_RUN: true
       PLUGIN_BASE: "."
       PLUGIN_REGISTRY: "10.89.0.1:5000"
       PLUGIN_REPO: "plugins/master-versions"

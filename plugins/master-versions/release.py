@@ -363,8 +363,11 @@ def release():
             bumped = run_command(bump_cmd)
 
             if debug:
-                print(f">>> [DEBUG] bump stdout: {bumped.stdout.strip()!r}")
-                print(f">>> [DEBUG] bump stderr: {bumped.stderr.strip()!r}")
+                print(f">>> [DEBUG] bump stdout: {bumped.stdout.strip()}")
+                if bumped.stderr.strip():
+                    print(">>> [DEBUG] bump stderr:")
+                    for line in bumped.stderr.strip().splitlines():
+                        print(f"    {line}")
 
             new_tag = bumped.stdout.strip()
             if not new_tag:
@@ -408,8 +411,11 @@ def release():
         res = run_command(cliff_cmd)
 
         if debug:
-            print(f">>> [DEBUG] cliff stdout: {res.stdout.strip()!r}")
-            print(f">>> [DEBUG] cliff stderr: {res.stderr.strip()!r}")
+            print(f">>> [DEBUG] cliff stdout: {res.stdout.strip()}")
+            if res.stderr.strip():
+                print(">>> [DEBUG] cliff stderr:")
+                for line in res.stderr.strip().splitlines():
+                    print(f"    {line}")
 
         if res.returncode != 0:
             print(f">>> ERROR generating changelog for {display_name}: {res.stderr.strip()}")
