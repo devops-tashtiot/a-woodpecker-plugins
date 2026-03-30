@@ -22,14 +22,10 @@ release              = release_module.release
 # ---------------------------------------------------------------------------
 
 PARSERS = [
-    {"message": r"^breaking\((.*)\)", "group": "Breaking Changes", "bump_type": "major", "skip": False},
-    {"message": r"^breaking",          "group": "Breaking Changes", "bump_type": "major", "skip": False},
-    {"message": r"^feat\((.*)\)",      "group": "Features",         "bump_type": "",      "skip": False},
-    {"message": r"^feat",              "group": "Features",         "bump_type": "",      "skip": False},
-    {"message": r"^fix\((.*)\)",       "group": "Bug Fixes",        "bump_type": "",      "skip": False},
-    {"message": r"^fix",               "group": "Bug Fixes",        "bump_type": "",      "skip": False},
-    {"message": r"^other\((.*)\)",     "group": "",                 "bump_type": "",      "skip": True},
-    {"message": r"^other",             "group": "",                 "bump_type": "",      "skip": True},
+    {"message": r"^breaking(\(.*?\))?", "group": "🚀 Breaking Changes", "bump_type": "major", "skip": False},
+    {"message": r"^feat(\(.*?\))?",     "group": "✨ Features",          "bump_type": "minor", "skip": False},
+    {"message": r"^fix(\(.*?\))?",      "group": "🐛 Bug Fixes",         "bump_type": "patch", "skip": False},
+    {"message": r"^other(\(.*?\))?",    "group": "",                     "bump_type": "",       "skip": True},
 ]
 
 
