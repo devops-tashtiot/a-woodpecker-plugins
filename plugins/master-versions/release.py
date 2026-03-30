@@ -227,9 +227,12 @@ def _print_cliff_rules(parsers, bump_cfg):
         skip    = p.get("skip", False)
         btype   = p.get("bump_type", "")
 
+        custom_major_re = bump_cfg.get("custom_major_increment_regex")
         if skip:
             level = 0
         elif btype == "major":
+            level = 3
+        elif custom_major_re and re.search(custom_major_re, pattern):
             level = 3
         elif btype == "minor":
             level = 2
@@ -280,8 +283,7 @@ def release():
 
     parsers, bump_cfg = load_cliff_parsers(global_toml)
 
-    if verbose >= 1:
-        _print_cliff_rules(parsers, bump_cfg)
+    _print_cliff_rules(parsers, bump_cfg)
 
     # ── Parse PR body ─────────────────────────────────────────────────────────
     location_to_commits = parse_pr_body(pr_body, parsers)
@@ -290,8 +292,7 @@ def release():
         print(">>> No release commits detected in PR Body.")
         return
 
-    if verbose >= 1:
-        _print_location_commits(location_to_commits)
+    _print_location_commits(location_to_commits)
 
     # ── Expand wildcards + apply exclusions ───────────────────────────────────
     location_to_commits = _expand_locations(location_to_commits, root_path, exclude_regex)
@@ -333,19 +334,17 @@ def release():
         all_matching_tags = existing_tags_result.stdout.strip().splitlines()
         latest_tag = all_matching_tags[0] if all_matching_tags else None
 
-        if verbose >= 1:
-            print(f">>> [INFO] Tag glob:          '{tag_glob}'")
-            print(f">>> [INFO] All matching tags: {all_matching_tags or '(none)'}")
-            first_tag = f"{tag_prefix}{initial_tag_version}"
-            print(f">>> [INFO] Latest tag (base): "
-                  f"{latest_tag or f'(none — first release → will use {first_tag})'}")
+        print(f">>> [INFO] Tag glob:          '{tag_glob}'")
+        print(f">>> [INFO] All matching tags: {all_matching_tags or '(none)'}")
+        first_tag = f"{tag_prefix}{initial_tag_version}"
+        print(f">>> [INFO] Latest tag (base): "
+              f"{latest_tag or f'(none — first release → will use {first_tag})'}")
 
         # Build --with-commit args (shell-safe quoting handles special chars)
         all_commits = sorted(commits)
         with_commit_args = " ".join(f"--with-commit {shlex.quote(c)}" for c in all_commits)
 
-        if verbose >= 1:
-            print(f">>> [INFO] Commits: {all_commits}")
+        print(f">>> [INFO] Commits: {all_commits}")
 
         # ── STEP 2: CALCULATE VERSION ─────────────────────────────────────────
         if latest_tag:
@@ -357,40 +356,34 @@ def release():
                 "-- HEAD..HEAD",
             ]))
 
-            if verbose >= 1:
-                print(f">>> [VERBOSE] bump_cmd: {bump_cmd}")
+            print(f">>> [VERBOSE] bump_cmd: {bump_cmd}")
 
             bumped = run_command(bump_cmd)
 
-            if verbose >= 1:
-                print(f">>> [VERBOSE] bump stdout: {bumped.stdout.strip()}")
-                if bumped.stderr.strip():
-                    print(">>> [VERBOSE] bump stderr:")
-                    for line in bumped.stderr.strip().splitlines():
-                        print(f"    {line}")
+            print(f">>> [VERBOSE] bump stdout: {bumped.stdout.strip()}")
+            if bumped.stderr.strip():
+                print(">>> [VERBOSE] bump stderr:")
+                for line in bumped.stderr.strip().splitlines():
+                    print(f"    {line}")
 
             new_tag = bumped.stdout.strip()
             if not new_tag:
                 print(f">>> SKIP: no releasable commits for {display_name}")
                 continue
 
-            if verbose >= 1:
-                print(f">>> [INFO] Calculated new_tag: {new_tag}")
+            print(f">>> [INFO] Calculated new_tag: {new_tag}")
         else:
             new_tag = f"{tag_prefix}{initial_tag_version}"
-            if verbose >= 1:
-                print(f">>> [INFO] No existing tag — first release: {new_tag}")
+            print(f">>> [INFO] No existing tag — first release: {new_tag}")
 
         # ── STEP 3: GENERATE CHANGELOG ────────────────────────────────────────
         changelog_path = os.path.join(full_path, "CHANGELOG.md")
         if os.path.exists(changelog_path):
             output_flag = f"--prepend {changelog_path}"
-            if verbose >= 1:
-                print(f">>> [INFO] CHANGELOG exists — using --prepend")
+            print(f">>> [INFO] CHANGELOG exists — using --prepend")
         else:
             output_flag = f"--output {changelog_path}"
-            if verbose >= 1:
-                print(f">>> [INFO] CHANGELOG not found — using --output")
+            print(f">>> [INFO] CHANGELOG not found — using --output")
 
         cliff_cmd = " ".join(filter(None, [
             cliff_cmd_base,
@@ -401,17 +394,15 @@ def release():
             "-- HEAD..HEAD",
         ]))
 
-        if verbose >= 1:
-            print(f">>> [VERBOSE] cliff_cmd: {cliff_cmd}")
+        print(f">>> [VERBOSE] cliff_cmd: {cliff_cmd}")
 
         res = run_command(cliff_cmd)
 
-        if verbose >= 1:
-            print(f">>> [VERBOSE] cliff stdout: {res.stdout.strip()}")
-            if res.stderr.strip():
-                print(">>> [VERBOSE] cliff stderr:")
-                for line in res.stderr.strip().splitlines():
-                    print(f"    {line}")
+        print(f">>> [VERBOSE] cliff stdout: {res.stdout.strip()}")
+        if res.stderr.strip():
+            print(">>> [VERBOSE] cliff stderr:")
+            for line in res.stderr.strip().splitlines():
+                print(f"    {line}")
 
         if res.returncode != 0:
             print(f">>> ERROR generating changelog for {display_name}: {res.stderr.strip()}")
@@ -424,6 +415,7 @@ def release():
         if output_tags_file:
             with open(output_tags_file, "a") as f:
                 f.write(f"{new_tag}\n")
+            print(f">>> [INFO] Tag '{new_tag}' written to '{output_tags_file}'")
 
 
 if __name__ == "__main__":
