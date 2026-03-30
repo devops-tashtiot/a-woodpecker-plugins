@@ -25,7 +25,7 @@ header = """
 """
 body = """
 {% if version %}\
-    ## [{{ version | trim_start_matches(pat="v") }}]({{ get_env(name="CI_REPO_LINK", default="") }}/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
+    ## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
 {% else %}\
     ## [unreleased]
 {% endif %}\

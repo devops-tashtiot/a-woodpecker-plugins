@@ -262,7 +262,6 @@ def release():
     root_path           = os.getenv("PLUGIN_BASE", ".")
     output_tags_file    = os.getenv("PLUGIN_OUTPUT_TAGS_FILE", "")
     exclude_regex       = os.getenv("PLUGIN_SCOPE_EXCLUDE_REGEX", "")
-    dry_run             = os.getenv("PLUGIN_DRY_RUN", "").lower() in ("1", "true", "yes")
     debug               = os.getenv("PLUGIN_DEBUG", "false").lower() == "true"
     initial_tag_version = os.getenv("PLUGIN_INITIAL_TAG", "1.0.0").lstrip("v")
     version_prefix      = "v" if os.getenv("PLUGIN_V_PREFIX", "").lower() == "true" else ""
@@ -270,9 +269,6 @@ def release():
     _bundled_toml = os.path.join(os.path.dirname(__file__), "cliff.toml")
     global_toml   = os.getenv("PLUGIN_CLIFF_TOML") or ("./cliff.toml" if os.path.exists("./cliff.toml") else _bundled_toml)
     cliff_cmd_base = f"git cliff --config {global_toml}" + (" -vv" if debug else "")
-
-    if dry_run:
-        print(">>> DRY RUN mode — no changelog files will be written, no tags recorded")
 
     if not os.path.exists(global_toml):
         print(f">>> ERROR: cliff.toml not found at {global_toml}")
@@ -380,10 +376,6 @@ def release():
             new_tag = f"{tag_prefix}{initial_tag_version}"
             if debug:
                 print(f">>> [DEBUG] No existing tag — first release: {new_tag}")
-
-        if dry_run:
-            print(f">>> [DRY RUN] Would release: {new_tag}")
-            continue
 
         # ── STEP 3: GENERATE CHANGELOG ────────────────────────────────────────
         changelog_path = os.path.join(full_path, "CHANGELOG.md")
