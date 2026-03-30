@@ -366,7 +366,7 @@ To make `chore` releasable, add it to `cliff.toml`:
 |----------|---------|-------------|
 | `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to append created tags to (used by `kaniko-master-versions`) |
 | `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | **Python regex applied to every location before it is processed — both explicit ones you wrote and ones expanded from wildcards.** Any location that matches is silently skipped. This is the primary guard against accidentally releasing non-service folders (e.g. `docs/`, `scripts/`, `shared/`) when using `[*]` or `[plugins/*]` wildcards. Without it, a wildcard would release every subdirectory it finds, including utility folders that are not versioned components. Example: `^docs$\|^scripts$\|^shared$` |
-| `PLUGIN_DEBUG` | `false` | `true` → detailed debug output for every git-cliff command and its result. Only `true` or `false` are valid values. |
+| `PLUGIN_VERBOSE` | `0` | Verbosity level. `0` = silent, `1` = info (cliff rules, commits, tag resolution), `2` = trace (full git-cliff commands and output). Mirrors the `-v` / `-vv` flag of git-cliff itself. |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version for the first release of a component that has no existing tag |
 | `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prepend `v` to the version number. `true` → `nati-v1.0.0`, unset/false → `nati-1.0.0` |
 | `PLUGIN_CLIFF_TOML` | *(see below)* | Path to a custom `cliff.toml`. Resolution order: (1) this variable if set, (2) `./cliff.toml` in the working directory if it exists, (3) the `cliff.toml` bundled in the Docker image. |

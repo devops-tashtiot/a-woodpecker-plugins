@@ -710,7 +710,7 @@ class TestRelease(unittest.TestCase):
 
     def _run(self, message, dirs_exist=(), cliff_stdout="nati-1.1.0",
              cliff_returncode=0, cliff_stderr="", list_dirs=(),
-             exclude_regex="", dry_run="", output_tags_file=""):
+             exclude_regex="", output_tags_file=""):
         """
         Helper: patches env vars and all filesystem/subprocess calls, then
         calls release() and returns the mock for run_command.
@@ -724,9 +724,8 @@ class TestRelease(unittest.TestCase):
             "PLUGIN_MESSAGE":            message,
             "PLUGIN_BASE":               "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": exclude_regex,
-            "PLUGIN_DRY_RUN":            dry_run,
             "PLUGIN_OUTPUT_TAGS_FILE":   output_tags_file,
-            "PLUGIN_DEBUG":              "false",
+            "PLUGIN_VERBOSE":            "0",
         }
 
         cliff_toml = os.path.join(os.path.dirname(_src_path), "cliff.toml")
@@ -795,30 +794,7 @@ class TestRelease(unittest.TestCase):
         mock_cmd = self._run("", dirs_exist=[])
         mock_cmd.assert_not_called()
 
-    def test_4_dry_run_skips_changelog(self):
-        """
-        Checks: PLUGIN_DRY_RUN=true causes release() to print what would be
-                released but skip the git-cliff changelog command.
-                Only the tag-list and bump commands are called (no --output flag).
-
-        Example:
-          PLUGIN_MESSAGE = "feat(auth)[nati]: add login"
-          PLUGIN_DRY_RUN = "true"
-          git cliff --bump --bumped-version is called to calculate the new tag.
-          git cliff --tag ... --output ... is NOT called.
-          Calls with "--output" or "--prepend" must not appear.
-        """
-        mock_cmd = self._run(
-            "feat(auth)[nati]: add login",
-            dirs_exist=["nati"],
-            cliff_stdout="nati-1.1.0",
-            dry_run="true",
-        )
-        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
-        self.assertNotIn("--output", calls_str)
-        self.assertNotIn("--prepend", calls_str)
-
-    def test_5_cliff_failure_does_not_crash(self):
+    def test_4_cliff_failure_does_not_crash(self):
         """
         Checks: if git-cliff returns a non-zero exit code for the changelog step,
                 release() prints an error message but does NOT raise an exception
@@ -875,9 +851,8 @@ class TestCliffTomlResolution(unittest.TestCase):
             "PLUGIN_MESSAGE":           "feat(auth)[nati]: add login",
             "PLUGIN_BASE":              "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
-            "PLUGIN_DRY_RUN":           "",
             "PLUGIN_OUTPUT_TAGS_FILE":  "",
-            "PLUGIN_DEBUG":             "false",
+            "PLUGIN_VERBOSE":           "0",
         }
         if cliff_toml_env:
             env["PLUGIN_CLIFF_TOML"] = cliff_toml_env
