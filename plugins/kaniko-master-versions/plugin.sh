@@ -174,21 +174,24 @@ build_image() {
     fi
 
     local destinations
-    if [ "${PLUGIN_DRY_RUN:-}" = "true" ]; then
-        destinations="--no-push"
-    else
-        destinations="--destination=${image_base}:${version}"
-        local aliases="${PLUGIN_ALIASES:-}"
-        if [ -n "${aliases}" ]; then
-            local alias_tag
-            while IFS= read -r alias_tag; do
-                alias_tag="$(printf '%s' "${alias_tag}" | tr -d ' ')"
-                [ -z "${alias_tag}" ] && continue
-                destinations="${destinations} --destination=${image_base}:${alias_tag}"
-            done << ALIASES
+    destinations="--destination=${image_base}:${version}"
+    local aliases="${PLUGIN_ALIASES:-}"
+    if [ -n "${aliases}" ]; then
+        local alias_tag
+        while IFS= read -r alias_tag; do
+            alias_tag="$(printf '%s' "${alias_tag}" | tr -d ' ')"
+            [ -z "${alias_tag}" ] && continue
+            destinations="${destinations} --destination=${image_base}:${alias_tag}"
+        done << ALIASES
 $(printf '%s' "${aliases}" | tr ',' '\n')
 ALIASES
-        fi
+    fi
+
+    local kaniko_destinations
+    if [ "${PLUGIN_DRY_RUN:-}" = "true" ]; then
+        kaniko_destinations="--no-push"
+    else
+        kaniko_destinations="${destinations}"
     fi
 
     echo "================================================================"
@@ -198,7 +201,7 @@ ALIASES
     echo "Context   : ${context}"
     echo "Dockerfile: ${context}/${dockerfile_name}"
     echo "Destinations:"
-    printf '%s\n' "${destinations}" | tr ' ' '\n' | grep '^--destination' | sed 's/--destination=/  /'
+    printf '%s\n' "${destinations}" | tr ' ' '\n' | grep '^--destination' | sed 's/--destination=/  /' || true
     [ "${PLUGIN_DRY_RUN:-}" = "true" ] && echo "  (dry-run — no push)"
     echo "================================================================"
 
@@ -209,7 +212,7 @@ ALIASES
         --snapshot-mode=redo \
         --dockerfile="${context}/${dockerfile_name}" \
         ${extra_opts} \
-        ${destinations}
+        ${kaniko_destinations}
 }
 
 run() {
