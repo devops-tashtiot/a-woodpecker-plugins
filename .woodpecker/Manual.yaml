@@ -49,7 +49,7 @@ steps:
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
-      PLUGIN_VERBOSE: 2
+      PLUGIN_VERBOSE: 1
     commands:
       - export PLUGIN_MESSAGE="$(cat pr_body.txt)"
       - |
