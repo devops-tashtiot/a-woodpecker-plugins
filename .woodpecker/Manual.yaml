@@ -50,6 +50,7 @@ steps:
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
       PLUGIN_VERBOSE: 0
+      PLUGIN_CHANGELOG_LEVEL: 0
     commands:
       - export PLUGIN_MESSAGE="$(cat pr_body.txt)"
       - |
@@ -62,7 +63,6 @@ steps:
         done
       - echo ">>> PLUGIN_BASE=$PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
       - python3 /app/release.py
-      - echo ">>> New tags:" && cat new_tags.txt || echo "No tags created"
   
   - name: Push changelogs to Git
     image: alpine/git
