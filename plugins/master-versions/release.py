@@ -413,11 +413,21 @@ def release():
     _print_location_commits(location_to_commits)
 
     # ── Expand wildcards + apply exclusions ───────────────────────────────────
+    had_wildcards = any("*" in loc for loc in location_to_commits)
     location_to_commits = _expand_locations(location_to_commits, root_path, exclude_regex)
 
     if not location_to_commits:
         print(">>> No components to release after expansion/filtering.")
         return
+
+    if had_wildcards:
+        print("\033[1;4;33m>>> COMMITS AFTER WILDCARD EXPANSION:\033[0m")
+        print("\033[33m    Wildcards replaced with concrete component paths.\033[0m")
+        for loc in sorted(location_to_commits):
+            display_loc = loc if loc else ""
+            print(f"    [{display_loc}]")
+            for commit in sorted(location_to_commits[loc]):
+                print("      " + commit.replace("\n", "\n      "))
 
     # ── Process each location ─────────────────────────────────────────────────
     created_tags = []

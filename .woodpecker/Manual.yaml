@@ -45,7 +45,7 @@ steps:
     image: netanelzucaim123/master-versions:latest
     environment:
       PLUGIN_BASE: "."
-      PLUGIN_SCOPE_EXCLUDE_REGEX: ""
+      PLUGIN_SCOPE_EXCLUDE_REGEX: "plugins/master-versions"
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       PLUGIN_MESSAGE_FILE: "pr_body.txt"
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
