@@ -377,6 +377,31 @@ feat(Go 1.22 migration)[*]: update all components to Go 1.22
 
 ---
 
+### Wildcard expansion output
+
+When a wildcard location is used, the plugin prints two blocks:
+
+1. **COMMITS TO PROCESS** — shows the raw wildcard as written in the message
+2. **COMMITS AFTER WILDCARD EXPANSION** — shows the resolved concrete locations after the wildcard is expanded and exclusions are applied
+
+```
+>>> COMMITS TO PROCESS:
+    [plugins/*]
+      feat: bump all third-party libs to latest
+>>> SKIP: location 'plugins/master-versions' excluded by SCOPE_EXCLUDE_REGEX
+>>> COMMITS AFTER WILDCARD EXPANSION:
+    Wildcards replaced with concrete component paths.
+    [plugins/docker]
+      feat: bump all third-party libs to latest
+    [plugins/kaniko]
+      feat: bump all third-party libs to latest
+    (locations matching SCOPE_EXCLUDE_REGEX='plugins/master-versions' were excluded — see SKIP lines above)
+```
+
+This makes it easy to verify which components will actually be released before the run proceeds.
+
+---
+
 ### Multi-line description
 
 All lines that follow a commit line are collected as continuation text until
@@ -449,7 +474,7 @@ To make `chore` releasable, add it to `cliff.toml`:
 | Variable | Description |
 |----------|-------------|
 | `PLUGIN_MESSAGE` | Text containing conventional commit lines. Can be a PR body, manual trigger input, pipeline variable, cron message, etc. |
-| `PLUGIN_BASE` | **The single most important variable.** The root directory all component locations are resolved against. Every path you write inside `[]` is joined onto this. Getting this wrong means the plugin looks for components in the wrong place, creates tags with wrong slugs, and writes `CHANGELOG.md` files in the wrong directories. When in doubt, set it to `"."` (repo root) and write full relative paths in `[]`. |
+| `PLUGIN_BASE` | **The single most important variable.** The root directory all component locations are resolved against. Every path you write inside `[]` is joined onto this. Getting this wrong means the plugin looks for components in the wrong place, creates tags with wrong slugs, and writes `CHANGELOG.md` files in the wrong directories. When in doubt, set it to `"."` (repo root) and write full relative paths in `[]`. Its value and meaning are printed at startup: `>>> PLUGIN_BASE='.' — root directory; all [location] paths are resolved relative to this`. |
 | `PLUGIN_CHANGELOG_LEVEL` | **Required.** Enforces the expected path depth of every `[location]` in `PLUGIN_MESSAGE`. Lines whose locations do not match the declared level are skipped. Level 0 = root only (`[]`). Level 1 = top-level dirs (`[nati]`, 0 slashes). Level 2 = one-level nested (`[plugins/docker]`, 1 slash). Level N = N−1 slashes. If not set the plugin prints an error and exits immediately. |
 
 ### Optional
@@ -457,7 +482,7 @@ To make `chore` releasable, add it to `cliff.toml`:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to append created tags to (used by `kaniko-master-versions`) |
-| `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | **Python regex applied to every location before it is processed — both explicit ones you wrote and ones expanded from wildcards.** Any location that matches is silently skipped. This is the primary guard against accidentally releasing non-service folders (e.g. `docs/`, `scripts/`, `shared/`) when using `[*]` or `[plugins/*]` wildcards. Without it, a wildcard would release every subdirectory it finds, including utility folders that are not versioned components. Example: `^docs$\|^scripts$\|^shared$` |
+| `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | **Python regex applied to every location before it is processed — both explicit ones you wrote and ones expanded from wildcards.** Any location that matches is silently skipped. This is the primary guard against accidentally releasing non-service folders (e.g. `docs/`, `scripts/`, `shared/`) when using `[*]` or `[plugins/*]` wildcards. Without it, a wildcard would release every subdirectory it finds, including utility folders that are not versioned components. Example: `^docs$\|^scripts$\|^shared$`. When set and wildcards are used, a reminder of the regex and a pointer to the SKIP lines is printed at the bottom of the **COMMITS AFTER WILDCARD EXPANSION** block. |
 | `PLUGIN_VERBOSE` | `0` | Verbosity level. `0` = silent, `1` = info (cliff rules, commits, tag resolution), `2` = trace (full git-cliff commands and output). Mirrors the `-v` / `-vv` flag of git-cliff itself. |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version for the first release of a component that has no existing tag |
 | `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prepend `v` to the version number. `true` → `nati-v1.0.0`, unset/false → `nati-1.0.0` |

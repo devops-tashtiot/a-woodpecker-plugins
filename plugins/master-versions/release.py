@@ -402,6 +402,7 @@ def release():
     _print_cliff_rules(parsers, bump_cfg, global_toml)
 
     print(f">>> PLUGIN_CHANGELOG_LEVEL={changelog_level}")
+    print(f">>> PLUGIN_BASE='{root_path}' — root directory; all [location] paths are resolved relative to this")
 
     # ── Parse PR body ─────────────────────────────────────────────────────────
     location_to_commits = parse_pr_body(pr_body, parsers, changelog_level=changelog_level)
