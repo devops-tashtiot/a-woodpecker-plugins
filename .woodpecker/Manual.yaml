@@ -51,7 +51,7 @@ steps:
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
       PLUGIN_VERBOSE: 0
-      PLUGIN_CHANGELOG_LEVEL: 2
+      PLUGIN_CHANGELOG_LEVEL: 0
     commands:
       - |
         for var in PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX; do
