@@ -269,7 +269,7 @@ def _expand_locations(location_to_commits, root_path, exclude_regex=""):
             # Explicit location (including "" for root)
             if exclude_regex and re.search(exclude_regex, loc):
                 display = loc if loc else ""
-                print(f"\033[33m    >>> SKIP: location '{subdir}' excluded by SCOPE_EXCLUDE_REGEX\033[0m")
+                print(f"\033[33m    >>> SKIP: location '{display}' excluded by SCOPE_EXCLUDE_REGEX\033[0m")
                 continue
             result.setdefault(loc, set()).update(commits)
 
