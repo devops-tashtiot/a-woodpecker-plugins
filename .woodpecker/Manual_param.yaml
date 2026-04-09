@@ -25,10 +25,10 @@ steps:
       PLUGIN_BASE: "."
       PLUGIN_SCOPE_EXCLUDE_REGEX: ""
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
+      PLUGIN_MESSAGE_FILE: "pr_body.txt"
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
-      - export PLUGIN_MESSAGE="$(cat pr_body.txt)"
       - |
         for var in PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX; do
           val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
@@ -39,7 +39,6 @@ steps:
         done
       - echo ">>> PLUGIN_BASE=$PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
       - python3 /app/release.py
-      - echo ">>> New tags:" && cat new_tags.txt || echo "No tags created"
 
   - name: Push changelogs to Git
     image: alpine/git

@@ -74,24 +74,24 @@ class TestRealPrBody(unittest.TestCase):
             "Also bumps the base image for all plugins.\n"
             "\n"
             "## Releases\n"
-            "feat(OAuth2 login)[nati]: add Google and GitHub providers\n"
-            "fix(worker pool race)[plugins/docker]: lock shared map with mutex\n"
-            "breaking(REST API)[nati, check]!: remove deprecated /v1 endpoints\n"
-            "other(scope)[nati]: this is a no-op marker\n"
+            "feat[nati]: add Google and GitHub providers\n"
+            "fix[plugins/docker]: lock shared map with mutex\n"
+            "breaking[nati, check]!: remove deprecated /v1 endpoints\n"
+            "other[nati]: this is a no-op marker\n"
             "\n"
             "## Checklist\n"
             "- [x] Tests pass\n"
             "- [x] Changelog reviewed\n"
-            "feat(base image)[plugins/*]: bump alpine to 3.19\n"
+            "feat[plugins/*]: bump alpine to 3.19\n"
         )
         result = parse_pr_body(body, parsers)
 
         self.assertIn("nati", result)
-        self.assertIn("feat(OAuth2 login): add Google and GitHub providers",        result["nati"])
-        self.assertIn("breaking(REST API)!: remove deprecated /v1 endpoints",       result["nati"])
+        self.assertIn("feat: add Google and GitHub providers",        result["nati"])
+        self.assertIn("breaking!: remove deprecated /v1 endpoints",  result["nati"])
 
         # "other" commit absorbs the checklist lines that follow it as continuation
-        other_commit = next((c for c in result["nati"] if "other(scope): this is a no-op marker" in c), None)
+        other_commit = next((c for c in result["nati"] if "other: this is a no-op marker" in c), None)
         self.assertIsNotNone(other_commit, "expected an 'other' commit in nati")
         # checklist lines are NOT separate location keys (they're continuation text, not commit headers)
         self.assertIn("## Checklist",          other_commit)
@@ -99,13 +99,13 @@ class TestRealPrBody(unittest.TestCase):
         self.assertIn("- [x] Changelog reviewed", other_commit)
 
         self.assertIn("check", result)
-        self.assertIn("breaking(REST API)!: remove deprecated /v1 endpoints",       result["check"])
+        self.assertIn("breaking!: remove deprecated /v1 endpoints",  result["check"])
 
         self.assertIn("plugins/docker", result)
-        self.assertIn("fix(worker pool race): lock shared map with mutex",          result["plugins/docker"])
+        self.assertIn("fix: lock shared map with mutex",              result["plugins/docker"])
 
         self.assertIn("plugins/*", result)
-        self.assertIn("feat(base image): bump alpine to 3.19",                      result["plugins/*"])
+        self.assertIn("feat: bump alpine to 3.19",                    result["plugins/*"])
 
         self.assertNotIn("## Summary", result)
         self.assertNotIn("x", result)
@@ -130,24 +130,24 @@ class TestRealPrBody(unittest.TestCase):
           "check" → {"fix(null pointer): unrelated fix — stops the block above"}
         """
         body = (
-            "feat(auth flow)[nati]:\n"
+            "feat[nati]:\n"
             "  Replace basic auth with OAuth2.\n"
             "  Supports Google, GitHub, and GitLab providers.\n"
             "  Adds token refresh logic and session expiry handling.\n"
             "\n"
-            "fix(null pointer)[check]: unrelated fix — stops the block above\n"
+            "fix[check]: unrelated fix — stops the block above\n"
         )
         result = parse_pr_body(body, parsers)
 
         self.assertIn("nati", result)
         nati_commit = next(iter(result["nati"]))
-        self.assertIn("  Replace basic auth with OAuth2.",                    nati_commit)
-        self.assertIn("  Supports Google, GitHub, and GitLab providers.",     nati_commit)
+        self.assertIn("  Replace basic auth with OAuth2.",                       nati_commit)
+        self.assertIn("  Supports Google, GitHub, and GitLab providers.",        nati_commit)
         self.assertIn("  Adds token refresh logic and session expiry handling.", nati_commit)
-        self.assertIn("feat(auth flow):",                                   nati_commit)
+        self.assertIn("feat:",                                                   nati_commit)
 
         self.assertEqual(result["check"],
-                         {"fix(null pointer): unrelated fix — stops the block above"})
+                         {"fix: unrelated fix — stops the block above"})
 
     def test_no_commit_lines_in_pr(self):
         """
@@ -186,7 +186,7 @@ class TestRealPrBody(unittest.TestCase):
                   the "nati" commit contains the checklist lines as continuation.
         """
         body = (
-            "feat(auth)[nati]: add login\n"
+            "feat[nati]: add login\n"
             "- [x] Tests pass\n"
             "- [ ] Docs updated\n"
         )
@@ -194,9 +194,9 @@ class TestRealPrBody(unittest.TestCase):
         self.assertIn("nati", result)
         self.assertEqual(len(result), 1)  # no spurious location keys
         nati_commit = next(iter(result["nati"]))
-        self.assertIn("feat(auth): add login", nati_commit)
-        self.assertIn("- [x] Tests pass",      nati_commit)
-        self.assertIn("- [ ] Docs updated",    nati_commit)
+        self.assertIn("feat: add login",   nati_commit)
+        self.assertIn("- [x] Tests pass",  nati_commit)
+        self.assertIn("- [ ] Docs updated", nati_commit)
 
     def test_all_known_types_accepted(self):
         """
@@ -271,43 +271,10 @@ class TestRealPrBody(unittest.TestCase):
           Only one location key — the "[root]" inside the description is
           not re-parsed as a location.
         """
-        body = "feat(nati)[root]: feat(nati)[root]\n"
+        body = "feat[root]: feat[root]\n"
         result = parse_pr_body(body, parsers)
 
-        self.assertEqual(result, {"root": {"feat(nati): feat(nati)[root]"}})
-        self.assertEqual(len(result), 1)
-
-    def test_bracket_in_description_not_reparsed_as_location(self):
-        """
-        Checks: when the description itself looks like a commit line with brackets,
-                only the first bracket pair immediately after the type/scope is
-                stripped as the location. '[...]' inside the description is left
-                verbatim and NOT treated as a second location.
-
-        PR body:
-          feat(nati)[root]: feat(nati)[root]
-
-        Parsing steps:
-          ^feat\\((.*?)\\) uses a NON-GREEDY (.*?) — stops at the FIRST ')'.
-          Matches "feat(nati)" at positions 0-9.
-          pattern_match.end() = 9
-          current_line[9] = '[' → bracket_re matches "[root]" (positions 9-15).
-          commit_str = "feat(nati)" + ": feat(nati)[root]"
-                     = "feat(nati): feat(nati)[root]"
-          Location = "root"
-
-          The "[root]" inside the description is never fed back through
-          _match_line — it is part of the same line, not a separate entry
-          from body.splitlines().
-
-        Expected:
-          result == {"root": {"feat(nati): feat(nati)[root]"}}
-          Only one location key — the line is processed exactly once.
-        """
-        body = "feat(nati)[root]: feat(nati)[root]\n"
-        result = parse_pr_body(body, parsers)
-
-        self.assertEqual(result, {"root": {"feat(nati): feat(nati)[root]"}})
+        self.assertEqual(result, {"root": {"feat: feat[root]"}})
         self.assertEqual(len(result), 1)
 
     def test_unknown_type_ignored(self):
@@ -325,6 +292,48 @@ class TestRealPrBody(unittest.TestCase):
         body = "chore(deps)[nati]: bump dependencies\n"
         result = parse_pr_body(body, parsers)
         self.assertEqual(result, {})
+
+    def test_changelog_level_with_real_parsers(self):
+        """
+        Checks: changelog_level enforcement works correctly when using the real
+                cliff.toml parsers — not the inline fixture.
+
+        Why this matters: the inline PARSERS fixture uses different pattern strings
+        (e.g. r"^feat(\(.*?\))?") while cliff.toml uses bare patterns (e.g. "^feat").
+        This test confirms level enforcement is independent of which patterns are
+        loaded and that the real cliff.toml patterns still produce correct routing
+        after the level filter is applied.
+
+        Note: cliff.toml currently has NO scoped parsers — only bare patterns
+        (^feat, ^fix, ^breaking, ^other). So commit lines must NOT include a (scope)
+        part — the '[' must follow the type directly (e.g. "feat[nati]: msg").
+
+        Body (changelog_level=1):
+          ## PR description prose      ← ignored (no parser matches + no bracket)
+          feat[nati]: add OAuth2 login ← "nati" has 0 slashes → level 1 → ACCEPT
+          fix[plugins/docker]: fix bug ← "plugins/docker" has 1 slash → level 1 expects 0 → SKIP
+          breaking[harel]: drop v1 API ← "harel" has 0 slashes → level 1 → ACCEPT
+
+        Expected:
+          "nati"  in result with commit "feat: add OAuth2 login"
+          "harel" in result with commit "breaking: drop v1 API"
+          "plugins/docker" NOT in result
+        """
+        body = (
+            "## PR description prose\n"
+            "feat[nati]: add OAuth2 login\n"
+            "fix[plugins/docker]: fix bug\n"
+            "breaking[harel]: drop v1 API\n"
+        )
+        result = parse_pr_body(body, parsers, changelog_level=1)
+
+        self.assertIn("nati", result)
+        self.assertIn("feat: add OAuth2 login", result["nati"])
+
+        self.assertIn("harel", result)
+        self.assertIn("breaking: drop v1 API", result["harel"])
+
+        self.assertNotIn("plugins/docker", result)
 
 
 if __name__ == "__main__":

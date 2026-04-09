@@ -1,39 +1,32 @@
 [git]
-conventional_commits = false
-filter_unconventional = true
-# Matches tags like harel-v1.0.1
-tag_pattern = "[a-zA-Z0-9-]+-v[0-9]+\\.[0-9]+\\.[0-9]+$"
+conventional_commits = false 
 
-commit_parsers = [
-  # Priority: Breaking -> Features -> Fixes -> Skip everything else
-  { message = "^breaking(\\(.*?\\))?", group = "🚀 🚀 Breaking Changes", bump_type = "major" },
-  { message = "^feat(\\(.*?\\))?",     group = "✨ Features",         bump_type = "minor" },
-  { message = "^fix(\\(.*?\\))?",      group = "🐛 Bug Fixes",        bump_type = "patch" },
-  { message = "^other(\\(.*?\\))?",    skip = true }
-
+commit_parsers = [    
+ # breaking - MAJOR bump because of custom_major_increment_regex
+  { message = "^breaking", group = "🚀 🚀 Breaking Changes" },
+ # feat - MINOR bump as usual conventional_commits
+  { message = "^feat",     group = "✨ Features" },
+ # fix - PATCH bump as usual conventional_commits
+  { message = "^fix",      group = "🐛 Bug Fixes" },
+ # other - SKIPPED
+  { message = "^other", group = "📦 other",skip = true }
 ]
-
 [bump]
 custom_major_increment_regex = "^breaking"
 
 [changelog]
-header = """
-# Changelog\n
-"""
+trim = false
 body = """
 {% if version %}\
-    ## [{{ version  }}]() - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
+    ## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
+
 {% else %}\
     ## [unreleased]
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
-    ### {{ group }}
-    {% for commit in commits %}
-        * {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
-                    {{ commit.message | upper_first }}\
-                    {% if commit.body %}
-                    {{ commit.body }}
-                    {% endif %}
-    {% endfor %}
-{% endfor %}\n
+### {{ group }}
+{% for commit in commits %}
+* {{ commit.message | replace(from="\n", to="  \n  ") }}
+{% endfor %}
+{% endfor %}
 """

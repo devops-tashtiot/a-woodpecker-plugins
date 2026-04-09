@@ -25,6 +25,14 @@ This plugin does **not** feed git-cliff a git log. Instead it uses git-cliff in 
 - `--bump --bumped-version` asks git-cliff to calculate the next version from the injected commit(s), using the last matching tag as the base
 - `--tag` sets the new version label when generating the changelog body
 
+#### Bump vs changelog — two separate git-cliff calls
+
+The plugin intentionally calls git-cliff **twice** per component:
+
+1. **Bump call** — receives only the **subject line** (first line) of each commit. This is required because git-cliff with `conventional_commits = false` applies the `[bump]` rules (`custom_minor_increment_regex`, `custom_major_increment_regex`) against the commit subject. When a multiline string is passed without a blank-line separator between the subject and body, git-cliff cannot isolate the subject and falls back to a patch bump regardless of the `[bump]` config. Passing the subject line alone guarantees correct bump level detection.
+
+2. **Changelog call** — receives the **full multiline commit string** (subject + continuation body). This ensures the body text written by the user appears in the `CHANGELOG.md` entry.
+
 This means the PR body is the **single source of truth** — the same run produces the same result regardless of what is or isn't in git history.
 
 ---
@@ -124,6 +132,8 @@ A line is recognised as a commit when it matches a pattern from `cliff.toml` `co
 
 > **`[location]` content must not contain `[` or `]`.** A line like `feat[na[ti]: msg` will never match as a commit line — the nested `[` fails the bracket content check. If such a line appears after any commit line, it is collected as continuation text instead.
 
+> **After `]`, only `!?:` is valid.** The closing `]` must be followed by at most one `!` then immediately `:`. A line like `feat[nati]!!: msg` (double `!!`) does **not** match as a commit line and becomes continuation text instead. This prevents malformed bang sequences from reaching git-cliff, which would silently produce a spurious patch bump.
+
 > **No line stripping.** Lines are never stripped. A line with leading whitespace (e.g. `  feat[nati]: ...`) does not match `^feat` and is silently ignored. Continuation lines are stored exactly as written.
 
 **What `[location]` does:**
@@ -215,6 +225,87 @@ commit type. Even a `fix` or `chore` with `!` produces a major release.
 
 ```
 fix(session tokens)[auth]!: drop insecure cookie format
+```
+
+---
+
+## How to write a good PR message
+
+Every line that should trigger a release must start with a recognised commit type from `cliff.toml`, immediately followed by the `[location]` bracket. Everything else in the message body is ignored or treated as continuation text.
+
+### Version bump levels (from `cliff.toml`)
+
+| Type | Bump | When to use |
+|------|------|-------------|
+| `breaking` | **Major** | Removes or changes something backwards-incompatibly |
+| `feat` | **Minor** | New feature or capability |
+| `fix` | **Patch** | Bug fix, crash fix, incorrect behaviour |
+| `other` | **None** | Explicit no-op — stops a continuation block, creates no release |
+| Any `!` after `]` | **Major** | Forces major regardless of type — e.g. `fix[nati]!:` |
+
+> Type must be **lowercase** and start at the **very beginning of the line** — no leading spaces.
+
+### Bump examples
+
+```
+breaking[nati]: remove /v1 endpoints          → major bump  (breaking type)
+feat[nati]: add OAuth2 login                  → minor bump  (feat type)
+fix[nati]: fix null pointer on startup        → patch bump  (fix type)
+fix[nati]!: drop legacy session format        → major bump  (! overrides fix→patch)
+other[nati]: just a note                      → no release  (skip type)
+```
+
+### Commit line validation rules
+
+The parser enforces strict rules on the characters that follow `]`:
+
+```
+feat[nati]: msg          ← valid — colon right after ]
+feat[nati]!: msg         ← valid — one bang then colon
+feat[nati]!!: msg        ← NOT a commit line — double bang fails the !?: check
+                            treated as continuation of the previous commit
+feat[nati]!   : msg      ← NOT a commit line — space between ! and :
+                            treated as continuation of the previous commit
+feat[nati]   : msg       ← NOT a commit line — space between ] and :
+                            treated as continuation of the previous commit
+feat[na[ti]: msg         ← NOT a commit line — nested [ in bracket content
+                            treated as continuation of the previous commit
+```
+
+If any of the above appear at the very start of the body (no preceding commit), they are silently ignored.
+
+### `PLUGIN_CHANGELOG_LEVEL` enforcement
+
+Every `[location]` in a commit line must match the declared depth level. If any location in a multi-location line fails, **the entire line is skipped**.
+
+```
+PLUGIN_CHANGELOG_LEVEL=1
+
+feat[nati]: add dashboard          → ACCEPT  (0 slashes = level 1)
+fix[plugins/docker]: fix socket    → SKIP    (1 slash, expected 0)
+feat[nati, plugins/docker]: shared → SKIP    (plugins/docker fails — whole line skipped)
+feat[nati, harel]: auth update     → ACCEPT  (both have 0 slashes)
+```
+
+A level-failing commit line also acts as a **commit boundary** — it ends the continuation of the preceding commit cleanly before being skipped:
+
+```
+PLUGIN_CHANGELOG_LEVEL=2
+
+feat[plugins/docker]:
+  detailed description line 1
+  detailed description line 2
+fix[nati]: wrong level   ← ends continuation above (commit boundary), then SKIP
+feat[plugins/auth]: next ← new commit, starts cleanly
+```
+
+Level 0 accepts only the root bracket `[]`:
+
+```
+PLUGIN_CHANGELOG_LEVEL=0
+
+feat[]: release root changelog   → ACCEPT
+feat[nati]: wrong level          → SKIP
 ```
 
 ---
@@ -359,6 +450,7 @@ To make `chore` releasable, add it to `cliff.toml`:
 |----------|-------------|
 | `PLUGIN_MESSAGE` | Text containing conventional commit lines. Can be a PR body, manual trigger input, pipeline variable, cron message, etc. |
 | `PLUGIN_BASE` | **The single most important variable.** The root directory all component locations are resolved against. Every path you write inside `[]` is joined onto this. Getting this wrong means the plugin looks for components in the wrong place, creates tags with wrong slugs, and writes `CHANGELOG.md` files in the wrong directories. When in doubt, set it to `"."` (repo root) and write full relative paths in `[]`. |
+| `PLUGIN_CHANGELOG_LEVEL` | **Required.** Enforces the expected path depth of every `[location]` in `PLUGIN_MESSAGE`. Lines whose locations do not match the declared level are skipped. Level 0 = root only (`[]`). Level 1 = top-level dirs (`[nati]`, 0 slashes). Level 2 = one-level nested (`[plugins/docker]`, 1 slash). Level N = N−1 slashes. If not set the plugin prints an error and exits immediately. |
 
 ### Optional
 

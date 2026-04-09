@@ -491,27 +491,6 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
         result = parse_pr_body("breaking[nati]: remove v1 api", PARSERS)
         self.assertEqual(result, {"nati": {"breaking: remove v1 api"}})
 
-    def test_K_second_bracket_pair_stays_in_commit_str(self):
-        """
-        Checks: only the FIRST bracket pair immediately after the parser pattern is
-                treated as the location. Any subsequent [...] on the same line is
-                NOT a location — it stays in the commit string passed to git-cliff.
-
-        Example:
-          "feat[nati][extra]: msg"
-          "^feat" matches at 0-4. stripped[4] = '[' → bracket_re matches "[nati]".
-          Brackets stripped: commit_str = "feat" + "[extra]: msg" = "feat[extra]: msg"
-          Location = "nati"
-
-          NOTE: git-cliff receives "feat[extra]: msg". With conventional_commits=true
-          and filter_unconventional=true, git-cliff will drop this commit because
-          "[extra]" is not a valid conventional commit scope (scope uses "()" not "[]").
-          No release will actually be produced for "nati".
-
-          Result: {"nati": {"feat[extra]: msg"}}
-        """
-        result = parse_pr_body("feat[nati][extra]: msg", PARSERS)
-        self.assertEqual(result, {"nati": {"feat[extra]: msg"}})
 
     def test_N_non_empty_description_collects_continuation(self):
         """
@@ -706,10 +685,12 @@ class TestRelease(unittest.TestCase):
 
     def _run(self, message, dirs_exist=(), cliff_stdout="nati-1.1.0",
              cliff_returncode=0, cliff_stderr="", list_dirs=(),
-             exclude_regex="", output_tags_file=""):
+             exclude_regex="", output_tags_file="", changelog_level="1"):
         """
         Helper: patches env vars and all filesystem/subprocess calls, then
         calls release() and returns the mock for run_command.
+        changelog_level defaults to "1" (required by release()).
+        Pass "" to simulate the variable being unset.
         """
         mock_result = MagicMock()
         mock_result.returncode = cliff_returncode
@@ -717,11 +698,12 @@ class TestRelease(unittest.TestCase):
         mock_result.stderr = cliff_stderr
 
         env = {
-            "PLUGIN_MESSAGE":            message,
-            "PLUGIN_BASE":               "/repo",
+            "PLUGIN_MESSAGE":             message,
+            "PLUGIN_BASE":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": exclude_regex,
-            "PLUGIN_OUTPUT_TAGS_FILE":   output_tags_file,
-            "PLUGIN_VERBOSE":            "0",
+            "PLUGIN_OUTPUT_TAGS_FILE":    output_tags_file,
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     changelog_level,
         }
 
         cliff_toml = os.path.join(os.path.dirname(_src_path), "cliff.toml")
@@ -749,7 +731,7 @@ class TestRelease(unittest.TestCase):
           run_command called twice: once for tag-list, once for bump, once for changelog = 3 calls.
         """
         mock_cmd = self._run(
-            "feat(auth)[nati]: add login",
+            "feat[nati]: add login",
             dirs_exist=["nati"],
             cliff_stdout="nati-1.1.0",
         )
@@ -771,7 +753,7 @@ class TestRelease(unittest.TestCase):
           The cliff command is definitely not called.
         """
         mock_cmd = self._run(
-            "feat(auth)[ghost]: add login",
+            "feat[ghost]: add login",
             dirs_exist=[],   # ghost does not exist
         )
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
@@ -804,7 +786,7 @@ class TestRelease(unittest.TestCase):
         """
         try:
             self._run(
-                "feat(auth)[nati]: add login",
+                "feat[nati]: add login",
                 dirs_exist=["nati"],
                 cliff_stdout="nati-1.1.0",
                 cliff_returncode=1,
@@ -812,6 +794,228 @@ class TestRelease(unittest.TestCase):
             )
         except Exception as e:
             self.fail(f"release() raised an exception on cliff failure: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Class 4b — TestChangelogLevel
+#
+# parse_pr_body(body, parsers, changelog_level=N) level-enforcement tests.
+#
+# PLUGIN_CHANGELOG_LEVEL controls which location depths are accepted.
+# The formula is:
+#   level 0  → only root (empty string location)
+#   level N  → location must have exactly N-1 forward slashes
+#              e.g. level 1 → "nati" (0 slashes)
+#                   level 2 → "plugins/docker" (1 slash)
+#
+# Tests 7 and 8 verify that release() itself enforces the variable as required.
+# ---------------------------------------------------------------------------
+
+class TestChangelogLevel(unittest.TestCase):
+
+    def test_1_level1_accepts_toplevel_rejects_nested(self):
+        """
+        Checks: changelog_level=1 accepts locations with 0 slashes (top-level dirs)
+                and skips locations with 1+ slashes (nested paths).
+
+        Why this matters: the most common monorepo setup — all components sit
+        directly under PLUGIN_BASE. Setting level=1 enforces that no nested path
+        can accidentally trigger a release.
+
+        Body:
+          feat[nati]: add dashboard       ← "nati"          has 0 slashes → level 1 → ACCEPT
+          fix[plugins/docker]: fix socket ← "plugins/docker" has 1 slash  → level 1 expects 0 → SKIP
+
+        Expected: {"nati": {"feat: add dashboard"}}
+                  "plugins/docker" must not appear.
+        """
+        body = (
+            "feat[nati]: add dashboard\n"
+            "fix[plugins/docker]: fix socket\n"
+        )
+        result = parse_pr_body(body, PARSERS, changelog_level=1)
+        self.assertIn("nati", result)
+        self.assertEqual(result["nati"], {"feat: add dashboard"})
+        self.assertNotIn("plugins/docker", result)
+
+    def test_2_level2_accepts_nested_rejects_toplevel(self):
+        """
+        Checks: changelog_level=2 accepts locations with exactly 1 slash and
+                skips locations with 0 slashes.
+
+        Why this matters: a mono-of-monorepo layout where all versioned components
+        live one level deep (e.g. plugins/docker, plugins/git). Level=2 ensures
+        someone cannot accidentally release the "plugins" parent by writing [plugins].
+
+        Body:
+          feat[plugins/docker]: add auth  ← "plugins/docker" has 1 slash → level 2 → ACCEPT
+          fix[nati]: fix crash            ← "nati"          has 0 slashes → level 2 expects 1 → SKIP
+
+        Expected: {"plugins/docker": {"feat: add auth"}}
+                  "nati" must not appear.
+        """
+        body = (
+            "feat[plugins/docker]: add auth\n"
+            "fix[nati]: fix crash\n"
+        )
+        result = parse_pr_body(body, PARSERS, changelog_level=2)
+        self.assertIn("plugins/docker", result)
+        self.assertEqual(result["plugins/docker"], {"feat: add auth"})
+        self.assertNotIn("nati", result)
+
+    def test_3_level0_accepts_root_only(self):
+        """
+        Checks: changelog_level=0 accepts ONLY the empty-bracket root location [].
+                Any non-empty location is skipped.
+
+        Why this matters: a single-component repo where only the root is ever
+        released. Level=0 prevents accidentally triggering a nested release.
+
+        Body:
+          feat[]: release root   ← empty string → root → ACCEPT
+          feat[nati]: add thing  ← "nati" non-empty → SKIP
+
+        Expected: {"": {"feat: release root"}}
+                  "nati" must not appear.
+        """
+        body = (
+            "feat[]: release root\n"
+            "feat[nati]: add thing\n"
+        )
+        result = parse_pr_body(body, PARSERS, changelog_level=0)
+        self.assertIn("", result)
+        self.assertEqual(result[""], {"feat: release root"})
+        self.assertNotIn("nati", result)
+
+    def test_4_multilocation_skipped_if_any_location_fails(self):
+        """
+        Checks: if ANY location in a comma-separated list fails the level check,
+                the ENTIRE line is skipped — even locations that would individually pass.
+
+        Why this matters: a line like feat[nati, plugins/docker] targets two
+        components at different depths. Partially accepting it would be wrong —
+        either the whole line is valid for this repo's layout or none of it is.
+
+        Body (changelog_level=1):
+          feat[nati, plugins/docker]: shared change
+          ↑ "nati":          0 slashes → ok for level 1
+          ↑ "plugins/docker": 1 slash  → FAIL for level 1 → whole line skipped
+
+        Expected: {} — neither nati nor plugins/docker appears.
+        """
+        body = "feat[nati, plugins/docker]: shared change\n"
+        result = parse_pr_body(body, PARSERS, changelog_level=1)
+        self.assertEqual(result, {})
+
+    def test_5_failing_line_ends_previous_continuation(self):
+        """
+        Checks: a level-failing commit line acts as a commit boundary — it stops
+                the continuation collection of the preceding commit (because
+                _match_line returns truthy for any valid commit structure, regardless
+                of level), finalises that commit with its accumulated lines, and is
+                then skipped itself.
+
+        Why this matters: without this behaviour, the continuation lines of the
+        first commit would "bleed" past the rejected line and potentially merge
+        with the next commit's body.
+
+        Body (changelog_level=2):
+          feat[plugins/docker]:          ← ACCEPT, starts continuation
+            description line 1           ← continuation
+            description line 2           ← continuation
+          fix[nati]: wrong level         ← _match_line matches → BREAKS inner loop
+                                            → first commit finalised with its 2 lines
+                                            → level check fails (0 slashes, expected 1) → SKIP
+          feat[plugins/auth]: next       ← ACCEPT, starts fresh
+
+        Expected:
+          "plugins/docker" commit contains both description lines
+          "plugins/auth"   commit = "feat: next"
+          "nati" absent
+        """
+        body = (
+            "feat[plugins/docker]:\n"
+            "  description line 1\n"
+            "  description line 2\n"
+            "fix[nati]: wrong level\n"
+            "feat[plugins/auth]: next\n"
+        )
+        result = parse_pr_body(body, PARSERS, changelog_level=2)
+
+        self.assertIn("plugins/docker", result)
+        docker_commit = next(iter(result["plugins/docker"]))
+        self.assertIn("  description line 1", docker_commit)
+        self.assertIn("  description line 2", docker_commit)
+
+        self.assertIn("plugins/auth", result)
+        self.assertEqual(result["plugins/auth"], {"feat: next"})
+
+        self.assertNotIn("nati", result)
+
+    def test_6_release_missing_changelog_level_exits_early(self):
+        """
+        Checks: when PLUGIN_CHANGELOG_LEVEL is not set (empty string is falsy),
+                release() prints an error and returns before calling run_command.
+
+        Why this matters: PLUGIN_CHANGELOG_LEVEL is required. Without it the plugin
+        has no idea what depth the user expects, so running silently would be wrong.
+        The empty-string check mirrors how pipeline tools set "not configured" vars.
+
+        Expected: run_command never called.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "nati-1.1.0"
+        mock_result.stderr = ""
+
+        env = {
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "PLUGIN_BASE":                "/repo",
+            "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
+            "PLUGIN_OUTPUT_TAGS_FILE":    "",
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     "",   # empty → falsy → triggers required-var error
+        }
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.path.isdir", return_value=True), \
+             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            release()
+
+        mock_cmd.assert_not_called()
+
+    def test_7_release_invalid_changelog_level_exits_early(self):
+        """
+        Checks: when PLUGIN_CHANGELOG_LEVEL is set to a non-integer string,
+                int() raises ValueError, which is caught, an error is printed,
+                and release() returns before calling run_command.
+
+        Why this matters: a typo like PLUGIN_CHANGELOG_LEVEL=one or a copy-paste
+        mistake should fail loudly rather than crashing with an unhandled exception
+        deep inside the loop.
+
+        Expected: run_command never called.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "nati-1.1.0"
+        mock_result.stderr = ""
+
+        env = {
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "PLUGIN_BASE":                "/repo",
+            "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
+            "PLUGIN_OUTPUT_TAGS_FILE":    "",
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     "abc",  # non-integer → int() raises ValueError
+        }
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.path.isdir", return_value=True), \
+             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            release()
+
+        mock_cmd.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -844,11 +1048,12 @@ class TestCliffTomlResolution(unittest.TestCase):
             return True  # everything else (dirs, changelog, etc.) exists
 
         env = {
-            "PLUGIN_MESSAGE":           "feat(auth)[nati]: add login",
-            "PLUGIN_BASE":              "/repo",
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "PLUGIN_BASE":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
-            "PLUGIN_OUTPUT_TAGS_FILE":  "",
-            "PLUGIN_VERBOSE":           "0",
+            "PLUGIN_OUTPUT_TAGS_FILE":    "",
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     "1",
         }
         if cliff_toml_env:
             env["PLUGIN_CLIFF_TOML"] = cliff_toml_env
