@@ -83,7 +83,7 @@ netanel-1.8           slug=netanel          version=1.8
 | `PLUGIN_DOCKERFILE` | `Dockerfile` | Dockerfile filename to look for |
 | `PLUGIN_ALIASES` | *(not set)* | Comma-separated alias tags pushed alongside the version tag. Not set by default — only the exact version tag is pushed. |
 | `PLUGIN_DRY_RUN` | `false` | Set to `"true"` to skip the actual push (`--no-push`) |
-| `PLUGIN_LOG_LEVEL` | `info` | Kaniko log verbosity |
+| `PLUGIN_LOG_LEVEL` | `info` | **Kaniko executor log verbosity.** Passed directly as the `-v` flag to `/kaniko/executor`. Controls how much output kaniko itself produces — this is not the plugin's own log level. Available values: `panic`, `fatal`, `error`, `warn`, `info`, `debug`, `trace`. |
 | `PLUGIN_SKIP_TLS_VERIFY` | `false` | Set to `"true"` to add `--skip-tls-verify` |
 | `PLUGIN_INSECURE` | `false` | Set to `"true"` to add `--insecure` |
 
@@ -130,5 +130,7 @@ appended to new_tags.txt              builds and pushes each image via Kaniko
 ```
 
 If `new_tags.txt` is empty (no components released), kaniko-master-versions exits immediately with no builds.
+
+
 
 

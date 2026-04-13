@@ -107,7 +107,7 @@ steps:
       - /app/plugin.sh
     environment:
       PLUGIN_DRY_RUN: "true"
-      PLUGIN_BASE_PATH: "."
+      PLUGIN_BASE_PATH: "plugins"
       PLUGIN_REGISTRY: "10.89.0.1:5000"
       PLUGIN_REPO: ""
       PLUGIN_TAGS_FILE: "new_tags.txt"

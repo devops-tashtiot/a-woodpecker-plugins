@@ -30,10 +30,15 @@ set -euo pipefail
 #                            e.g. "latest"       → also push :latest
 #                            e.g. "prod,staging" → also push :prod and :staging
 #   PLUGIN_DRY_RUN         — "true" → --no-push (no actual push)
-#   PLUGIN_LOG_LEVEL       — kaniko verbosity           (default: info)
+#   PLUGIN_LOG_LEVEL       — kaniko executor log verbosity (default: info)
+#                            Controls the -v flag passed directly to /kaniko/executor.
+#                            Available values: panic, fatal, error, warn, info, debug, trace
 #   PLUGIN_SKIP_TLS_VERIFY — "true" → --skip-tls-verify
 #   PLUGIN_INSECURE        — "true" → --insecure
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Print a yellow-coloured message. Accepts >&2 redirect like a normal echo.
+yecho() { printf '\033[33m%s\033[0m\n' "$*"; }
 
 validate_required() {
     local missing=""
@@ -64,9 +69,9 @@ setup_docker_auth() {
     }
 }
 DOCKERJSON
-    echo "DEBUG: Docker auth configured for ${PLUGIN_REGISTRY:-index.docker.io}" >&2
+    yecho "Docker auth configured for ${PLUGIN_REGISTRY:-index.docker.io}" >&2
 }
-#TODO: adjust to plugin_prefix
+
 # Extract the version from the END of a tag.
 # Matches: v1.2.3 / 1.2.3 / v1.8 / 1.8 etc.
 extract_version() {
@@ -194,18 +199,20 @@ ALIASES
         kaniko_destinations="${destinations}"
     fi
 
-    echo "================================================================"
-    echo "Component : ${rel_path}"
-    echo "Version   : ${version}"
-    echo "Aliases   : ${PLUGIN_ALIASES:-(none)}"
-    echo "Log level : ${log}"
-    echo "Context   : ${context}"
-    echo "Dockerfile: ${context}/${dockerfile_name}"
-    echo "DEBUG: raw destinations='${destinations}'" >&2
-    echo "Destinations:"
-    printf '%s\n' "${destinations}" | tr ' ' '\n' | sed -n 's/^--destination=//p' | sed 's/^/  /'
-    [ "${PLUGIN_DRY_RUN:-}" = "true" ] && echo "  (dry-run — no push)"
-    echo "================================================================"
+    yecho "================================================================"
+    yecho "Component : ${rel_path}"
+    yecho "Version   : ${version}"
+    yecho "Aliases   : ${PLUGIN_ALIASES:-(none)}"
+    yecho "Log level : ${log}"
+    yecho "Context   : ${context}"
+    yecho "Dockerfile: ${context}/${dockerfile_name}"
+    yecho "raw destinations='${destinations}'" >&2
+    yecho "Destinations:"
+    printf '%s\n' "${destinations}" | tr ' ' '\n' | sed -n 's/^--destination=//p' | while IFS= read -r dest; do
+        yecho "  ${dest}"
+    done
+    [ "${PLUGIN_DRY_RUN:-}" = "true" ] && yecho "  (dry-run — no push)"
+    yecho "================================================================"
 
     # shellcheck disable=SC2086
     /kaniko/executor \
@@ -222,54 +229,54 @@ run() {
 
     local tags_input=""
     if [ -n "${PLUGIN_TAGS_FILE:-}" ] && [ -f "${PLUGIN_TAGS_FILE}" ]; then
-        echo "DEBUG: Reading tags from file: ${PLUGIN_TAGS_FILE}" >&2
+        yecho "Reading tags from file: ${PLUGIN_TAGS_FILE}" >&2
         tags_input="$(cat "${PLUGIN_TAGS_FILE}")"
     else
-        echo "DEBUG: Reading tags from PLUGIN_TAGS env var" >&2
+        yecho "Reading tags from PLUGIN_TAGS env var" >&2
         tags_input="$(printf '%s' "${PLUGIN_TAGS}" | tr ',' '\n')"
     fi
 
     if [ -z "${tags_input}" ]; then
-        echo "INFO: Tag list is empty. Nothing to build." >&2
+        yecho "Tag list is empty. Nothing to build." >&2
         return 0
     fi
 
     printf '%s\n' "${tags_input}" | while IFS= read -r tag; do
         [ -z "${tag}" ] && continue
-        echo "--- Processing tag: ${tag} ---" >&2
+        yecho "--- Processing tag: ${tag} ---" >&2
 
         local version
         version="$(extract_version "${tag}")"
         if [ -z "${version}" ]; then
-            echo "WARN: Cannot extract a version from '${tag}'. Skipping." >&2
+            yecho "WARN: Cannot extract a version from '${tag}'. Skipping." >&2
             continue
         fi
 
         local slug
         slug="$(extract_slug "${tag}")"
-        echo "DEBUG: slug='${slug}'  version='${version}'" >&2
+        yecho "slug='${slug}'  version='${version}'" >&2
 
         local rel_path
         if ! rel_path="$(find_path_for_slug "${slug}")"; then
             if [ -z "${slug}" ]; then
-                echo "WARN: Tag '${tag}' . Expected a ${PLUGIN_DOCKERFILE:-Dockerfile} at the root of '${base}/' but none was found. Skipping." >&2
+                yecho "WARN: Tag '${tag}' . Expected a ${PLUGIN_DOCKERFILE:-Dockerfile} at the root of '${base}/' but none was found. Skipping." >&2
             else
-                echo "WARN: Tag '${tag}' maps to component '${slug}' but no ${PLUGIN_DOCKERFILE:-Dockerfile} was found under '${base}/${slug}/'. Skipping." >&2
+                yecho "WARN: Tag '${tag}' maps to component '${slug}' but no ${PLUGIN_DOCKERFILE:-Dockerfile} was found under '${base}/${slug}/'. Skipping." >&2
             fi
             continue
         fi
-        echo "DEBUG: resolved path='${rel_path}'" >&2
+        yecho "resolved path='${rel_path}'" >&2
 
         build_image "${rel_path}" "${version}"
     done
 }
 
 main() {
-    echo "--- KANIKO MASTER VERSIONS PLUGIN START ---" >&2
+    yecho "--- KANIKO MASTER VERSIONS PLUGIN START ---" >&2
     validate_required
     setup_docker_auth
     run
-    echo "--- KANIKO MASTER VERSIONS PLUGIN DONE ---" >&2
+    yecho "--- KANIKO MASTER VERSIONS PLUGIN DONE ---" >&2
 }
 
 main
