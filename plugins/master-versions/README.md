@@ -6,20 +6,46 @@ and records created tags to an output file for downstream steps.
 
 ---
 
+## What is git-cliff?
+
+git-cliff is a changelog generator that reads commit messages and produces structured
+`CHANGELOG.md` files, calculating the next semantic version from the types of changes present.
+
+### How this plugin uses git-cliff (stateless mode)
+
+This plugin does **not** feed git-cliff the full git log. Instead:
+
+- `--with-commit` injects the exact commit string from `PLUGIN_MESSAGE_FILE` directly — git history is bypassed entirely
+- `--tag-pattern` restricts git-cliff to only tags belonging to the current component (e.g. `^nati-[0-9]+\.[0-9]+\.[0-9]+$`)
+- `--bump --bumped-version` asks git-cliff to calculate the next version from the injected commit(s), using the last matching tag as the base
+- `--tag` sets the new version label when generating the changelog body
+
+The file passed to `PLUGIN_MESSAGE_FILE` (usually the PR description, but can be anything)
+is the **single source of truth** — the same run always produces the same result regardless
+of what is or isn't in git history.
+
+---
+
 ## How to Use — The Most Important Part
 
 This is the full end-to-end flow. Everything else in this document is detail.
 
 ### Step 1 — Write your PR description
 
-Your PR body is the **source of truth**. Write commit lines in it using this format:
+Your PR body is the **source of truth**. Write commit lines using this format:
 
 ```
 type[location]: description
 ```
 
-Every line that starts with a recognised type (`feat`, `fix`, `breaking`, `other`) and is
-immediately followed by `[location]` triggers a release for that component.
+> **The `[` bracket immediately after the type is what makes a line a commit line.**
+> Without it, the line is ignored — even if it starts with `feat` or `fix`.
+> The type alone means nothing. The type + `[` is the trigger.
+
+> **The available types are defined entirely in `cliff.toml` `commit_parsers`.**
+> This is the most important configuration in the whole system. If a type is not listed
+> there, no release is produced — the line is silently ignored regardless of what you write.
+> Default types: `feat` (minor), `fix` (patch), `breaking` (major), `other` (skip/no-op).
 
 **Real PR body example:**
 
@@ -51,7 +77,7 @@ In your Woodpecker pipeline, the PR description is written to a file and passed 
   image: netanelzucaim123/master-versions:latest
   settings:
     message_file: pr_body.txt       # PLUGIN_MESSAGE_FILE — the file to read
-    base_path: .                    # PLUGIN_BASE_PATH — root of your repo
+    base_path: .                    # PLUGIN_BASE_PATH — root of your repo (critical — see below)
     changelog_level: 1              # PLUGIN_CHANGELOG_LEVEL — expected location depth
     output_tags_file: new_tags.txt  # PLUGIN_OUTPUT_TAGS_FILE — tags for downstream
 ```
@@ -70,16 +96,16 @@ For every matched component the plugin:
 
 `PLUGIN_MESSAGE_FILE` is a **path to a file** containing the text to parse.
 
-It can point to **any file** — the plugin just reads its contents and scans for commit lines.
-The file can contain any mix of prose, markdown, checklists, and commit lines — only lines
-matching the commit pattern trigger a release.
+It can point to **any file** — the plugin reads its contents and scans every line for commit
+patterns. The file can contain any mix of prose, markdown, checklists, and commit lines —
+only lines matching the commit pattern trigger a release.
 
 **Most common use: PR description**
 
-```yaml
+```bash
 # In CI: write the PR body to a file, then point the plugin at it
-- curl -s <api>/pulls/$CI_COMMIT_PULL_REQUEST | jq -r '.body' > pr_body.txt
-- PLUGIN_MESSAGE_FILE=pr_body.txt python3 release.py
+curl -s <api>/pulls/$CI_COMMIT_PULL_REQUEST | jq -r '.body' > pr_body.txt
+PLUGIN_MESSAGE_FILE=pr_body.txt python3 release.py
 ```
 
 **Other valid uses:**
@@ -99,6 +125,36 @@ PLUGIN_MESSAGE_FILE=notes.txt python3 release.py
 
 ---
 
+## PLUGIN_BASE_PATH — the most critical variable
+
+> **Getting `PLUGIN_BASE_PATH` wrong breaks everything silently.**
+> The plugin will look for components in the wrong place, create tags with wrong slugs,
+> and write `CHANGELOG.md` files in the wrong directories — with no errors, just wrong output.
+
+`PLUGIN_BASE_PATH` is the **root directory** that every `[location]` is resolved against.
+When you write `feat[nati]: msg`, the plugin looks for the component at `PLUGIN_BASE_PATH/nati/`.
+
+```
+repo/
+  nati/          ← PLUGIN_BASE_PATH="."         → write [nati]
+  plugins/
+    docker/      ← PLUGIN_BASE_PATH="."         → write [plugins/docker]
+                    PLUGIN_BASE_PATH="./plugins" → write [docker]
+```
+
+**When in doubt, set it to `"."` (repo root) and write full relative paths in `[location]`.**
+
+Setting `PLUGIN_BASE_PATH="./plugins"` lets you write shorter locations (`[docker]` instead
+of `[plugins/docker]`) but your tags become `docker-1.0.0` instead of `plugins-docker-1.0.0`.
+Choose based on what tag names you want — and be consistent.
+
+The value and meaning are printed at every run:
+```
+>>> PLUGIN_BASE_PATH='.' — root directory; all [location] paths are resolved relative to this
+```
+
+---
+
 ## Message format
 
 ```
@@ -107,15 +163,17 @@ type[location]!: description
 
 | Part | Required | Description |
 |------|----------|-------------|
-| `type` | Yes | `feat`, `fix`, `breaking`, `other` — must be lowercase, no leading spaces |
-| `[location]` | Yes | Component path relative to `PLUGIN_BASE_PATH`. Controls tag, CHANGELOG path |
+| `type` | Yes | Must be a type defined in `cliff.toml` `commit_parsers` — lowercase, no leading spaces |
+| `[` | **Critical** | **Must immediately follow the type with no gap.** This bracket is what identifies a commit line. `feat: msg` (no bracket) is not a commit line and is ignored. |
+| `location` | Yes (content optional) | Component path relative to `PLUGIN_BASE_PATH`. Empty `[]` means repo root. |
+| `]` | Yes | Closes the bracket |
 | `!` | No | Forces a major bump regardless of type |
 | `:` | Yes | Immediately after `]` or `!` — no spaces |
 | `description` | Yes | What changed — goes into the changelog as-is |
 
-> **No scope.** With `conventional_commits = false` in `cliff.toml`, git-cliff does not
-> parse `type(scope): description` — it treats the whole string as a raw message. Do not
-> use `feat(scope)[nati]: msg` — write `feat[nati]: msg` directly.
+> **No scope.** With `conventional_commits = false` in `cliff.toml`, git-cliff treats the
+> whole string as a raw message — `type(scope): description` is not parsed. Do not write
+> `feat(scope)[nati]: msg`. Write `feat[nati]: msg`.
 
 > **Lowercase, no indent.** `Feat[nati]: ...`, `FIX[nati]: ...`, or `  feat[nati]: ...`
 > (leading spaces) are all silently ignored — they do not match `^feat` etc.
@@ -133,11 +191,14 @@ type[location]!: description
 After a commit line is recognised, **every following line is collected as continuation text**
 until the next commit line is encountered.
 
-**A line starts a new commit when** it matches a commit_parser pattern at position 0 **and**
-is immediately followed by `[`. Both conditions must be true simultaneously.
+**A line starts a new commit when:**
+1. It matches a `commit_parsers` pattern at position 0, **AND**
+2. That match is immediately followed by `[`
 
-**A line is continuation when** it does not match a commit_parser, or matches one but is not
-followed by `[` (e.g. plain prose starting with "fix" but no bracket after it).
+Both conditions must be true simultaneously. If either is false, the line is continuation.
+
+**A line is continuation when** it does not match any commit_parser pattern, or it matches
+one but is not followed by `[` (e.g. plain prose that happens to start with the word "fix").
 
 ```
 feat[nati]: add login
@@ -166,22 +227,25 @@ feat[check]: new commit           ← starts fresh
 ```
 
 **`other` as a continuation stopper.**
-`other[loc]: ...` is a skip type — git-cliff produces no release entry for it. But it still
-functions as a commit boundary, making it useful when you want to stop a continuation block
-without triggering a release:
+`other[loc]: ...` is a skip type — git-cliff produces no release entry. But it still
+acts as a commit boundary, making it useful to stop a continuation block cleanly:
 
 ```
 feat[nati]: big feature
   Details here — these are continuation lines.
 
 other[nati]: stop the block above   ← ends continuation cleanly, no release entry
-## Checklist                         ← after other, this is continuation of other (also skipped)
+## Checklist                         ← continuation of "other" — also skipped
 - [x] Tests pass
 ```
 
 ---
 
 ## Location `[]` — where to release
+
+> **The `[location]` bracket is the routing mechanism.** It controls three things at once:
+> where `CHANGELOG.md` is written, what tag prefix is used, and what git history is isolated to.
+> It is stripped before being passed to git-cliff — git-cliff never sees it.
 
 | What you write | Meaning |
 |----------------|---------|
@@ -204,6 +268,11 @@ Slashes in the path become hyphens in the tag:
 ---
 
 ## Type reference
+
+> **Types are defined entirely in `cliff.toml` `commit_parsers`.** This is the single most
+> important config in the system. A type not listed there produces no release — the line is
+> silently skipped. To add a new type, add an entry to `commit_parsers`. See the
+> `cliff.toml explained` section below.
 
 | Type | Bump | When to use |
 |------|------|-------------|
@@ -240,8 +309,11 @@ feat[nati, harel]: auth update     → ACCEPT (both have 0 slashes)
 
 ## cliff.toml explained
 
-The `cliff.toml` controls all of git-cliff's behaviour: which commit types are recognised,
-what version bump they produce, and how the changelog is rendered.
+> **`cliff.toml` is the most important configuration file in this system.**
+> It defines which commit types are recognised, what version bump each produces, and how the
+> changelog is rendered. If a type is not in `commit_parsers`, it does not exist to the plugin.
+
+The `cliff.toml` controls all of git-cliff's behaviour.
 
 ### `[bump]` — version increment rules
 
@@ -271,7 +343,7 @@ commit_parsers = [
 | Parameter | What it does |
 |-----------|-------------|
 | `conventional_commits = false` | git-cliff treats each commit as a raw string — no `type(scope): description` parsing. Bump rules and group assignment come entirely from `commit_parsers` patterns. |
-| `commit_parsers` | Ordered list — **first match wins**. Each entry matches against the start of the raw commit string. |
+| `commit_parsers` | **The type registry.** Ordered list — first match wins. Each entry's `message` regex is matched against the start of the raw commit string. This list defines every type the plugin recognises. Anything not listed here is silently dropped. |
 
 #### commit_parsers fields
 
@@ -281,9 +353,9 @@ commit_parsers = [
 | `group` | Changelog section heading this commit appears under. |
 | `skip = true` | Drop the commit entirely — no changelog entry, no version bump. |
 
-Any commit whose message doesn't match any entry is also skipped.
+**Any commit whose message doesn't match any entry is also silently skipped.**
 
-To add a new type, add a new entry. Example — add `chore` as a patch no-op:
+To add a new type, add a new entry. Example — add `chore` as a no-op:
 ```toml
 { message = "^chore", group = "🔧 Chores", skip = true }
 ```
@@ -302,7 +374,7 @@ body = """
 
 | Parameter | What it does |
 |-----------|-------------|
-| `trim = false` | Preserves leading/trailing whitespace in the rendered output. Keeps blank lines between sections as written in the template. |
+| `trim = false` | Preserves leading/trailing whitespace in the rendered output. |
 | `body` | Tera template rendered once per release. Produces the `CHANGELOG.md` section. |
 
 Key template variables:
@@ -348,33 +420,20 @@ git cliff --tag-pattern '^nati-[0-9]+\.[0-9]+\.[0-9]+$' \
 
 | Variable | Description |
 |----------|-------------|
-| `PLUGIN_MESSAGE_FILE` | **Path to a file** containing the message to parse. Can be any file — a PR body saved to disk, a manually written release note, a cron-generated file, etc. Usually populated from the PR description in CI. The plugin reads the entire file and scans every line for commit patterns. |
-| `PLUGIN_BASE_PATH` | Root directory. All `[location]` paths are resolved relative to this. Every path you write inside `[]` is joined onto this. Getting this wrong means the plugin looks for components in the wrong place, creates tags with wrong slugs, and writes `CHANGELOG.md` files in the wrong directories. When in doubt, set it to `"."` (repo root). Printed at startup: `>>> PLUGIN_BASE_PATH='.' — root directory; all [location] paths are resolved relative to this`. |
-| `PLUGIN_CHANGELOG_LEVEL` | Enforces the expected path depth of every `[location]`. Lines whose locations do not match the declared level are skipped. Level 0 = root only (`[]`). Level 1 = top-level dirs (`[nati]`, 0 slashes). Level 2 = one-level nested (`[plugins/docker]`, 1 slash). Level N = N−1 slashes. If not set the plugin prints an error and exits. |
+| `PLUGIN_MESSAGE_FILE` | **Path to a file** containing the message to parse. Can be any file — a PR body saved to disk, a manually written release note, a cron-generated file, etc. Usually populated from the PR description in CI. |
+| `PLUGIN_BASE_PATH` | **Critical — getting this wrong silently breaks tag names, CHANGELOG paths, and directory resolution.** The root directory all `[location]` paths are resolved against. When in doubt, use `"."` and write full relative paths in `[]`. Printed at startup so you can verify it. |
+| `PLUGIN_CHANGELOG_LEVEL` | Enforces the expected path depth of every `[location]`. Lines whose locations do not match are skipped. Level 0 = root (`[]`). Level 1 = top-level dirs (`[nati]`). Level 2 = one level nested (`[plugins/docker]`). If not set the plugin prints an error and exits. |
 
 ### Optional
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to append created tags to — one tag per line. Read by `kaniko-master-versions` to build images. |
-| `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | Python regex applied to every location before processing — both explicit and wildcard-expanded. Any matching location is silently skipped. Primary guard against releasing non-service folders (e.g. `docs/`, `scripts/`) when using `[*]`. Example: `^docs$\|^scripts$`. |
+| `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | Python regex applied to every location before processing — both explicit and wildcard-expanded. Any matching location is silently skipped. Primary guard against releasing non-service folders when using `[*]`. Example: `^docs$\|^scripts$`. |
 | `PLUGIN_VERBOSE` | `0` | `0` = minimal, `1` = info, `2` = trace (full git-cliff commands and output). |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version for the first release of a component with no existing tag. |
 | `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prefix version with `v`. `true` → `nati-v1.0.0`, unset → `nati-1.0.0`. |
 | `PLUGIN_CLIFF_TOML` | *(bundled)* | Path to a custom `cliff.toml`. Resolution order: (1) this variable, (2) `./cliff.toml` in working dir, (3) bundled image copy. |
-
-#### PLUGIN_BASE_PATH examples
-
-```
-repo/
-  nati/          ← PLUGIN_BASE_PATH="."         → location [nati]
-  plugins/
-    docker/      ← PLUGIN_BASE_PATH="."         → location [plugins/docker]
-                    PLUGIN_BASE_PATH="./plugins" → location [docker]
-```
-
-Setting `PLUGIN_BASE_PATH="./plugins"` lets you write shorter locations (`[docker]` instead
-of `[plugins/docker]`) but your tags become `docker-1.0.0` instead of `plugins-docker-1.0.0`.
 
 ---
 
@@ -502,24 +561,4 @@ Result:
 - `plugins/docker` → patch bump
 - `base/argo` → major bump (breaking + !)
 - root → skipped (`other` is skip type)
-- Checklist lines → continuation of `other[root]` → also skipped
-
----
-
-## What is git-cliff?
-
-git-cliff is a changelog generator that reads commit messages and produces structured
-`CHANGELOG.md` files, calculating the next semantic version from the types of changes present.
-
-### How this plugin uses git-cliff (stateless mode)
-
-This plugin does **not** feed git-cliff the full git log. Instead:
-
-- `--with-commit` injects the exact commit string from `PLUGIN_MESSAGE_FILE` directly — git history is bypassed
-- `--tag-pattern` restricts git-cliff to only tags belonging to the current component (e.g. `^nati-[0-9]+\.[0-9]+\.[0-9]+$`)
-- `--bump --bumped-version` asks git-cliff to calculate the next version from the injected commit(s), using the last matching tag as the base
-- `--tag` sets the new version label when generating the changelog body
-
-The file passed to `PLUGIN_MESSAGE_FILE` (usually the PR description, but can be anything)
-is the **single source of truth** — the same run always produces the same result regardless
-of what is or isn't in git history.
+- Checklist lines → continuation of `other[]` → also skipped
