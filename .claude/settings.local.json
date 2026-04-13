@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull:*)",
+      "Bash(find . -name \"CHANGELOG.md\" -not -path \"./.git/*\" -delete)",
+      "Bash(xargs -r git tag -d)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "mcp__gitea__create_branch",
+      "mcp__gitea__create_or_update_file",
+      "mcp__gitea__pull_request_write",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoidXNlciIsInVzZXItaWQiOiIxIn0.TEZKoGvHtKPiglqvF9N9Hky-M80sayzuI-cFe7sSBwc\" curl -s \"http://localhost:8000/api/repos/3/pipelines/194\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(python3 -c \":*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoidXNlciIsInVzZXItaWQiOiIxIn0.TEZKoGvHtKPiglqvF9N9Hky-M80sayzuI-cFe7sSBwc\" curl -s \"http://localhost:8000/api/repos/3/pipelines?page=1&perPage=3\" -H \"Authorization: Bearer $TOKEN\")",
+      "mcp__gitea__pull_request_read",
+      "Bash(curl -sf -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjc3JmIjoiNHVTcDFDS0Rrc0tLTE1FWjVTR3RsVlkxVzJkeGJxTmdGMlFKMER2UGtBQT0iLCJleHAiOjE3NjkyMjY4ODgsImlhdCI6MTc0MzY5NDg4OCwic3ViIjoiMSIsInR5cGUiOiJ1c2VyIn0.gj7jrGFWBPbwk3T3gIEi0wXEfnFQQ3kD3h8mCFe6IzQ\" \"http://localhost:8000/api/repos\")",
+      "Bash(python3 -c \"import sys,json; repos=json.load\\(sys.stdin\\); [print\\(r[''''id''''], r[''''full_name'''']\\) for r in repos]\")",
+      "Bash(curl -sf -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjc3JmIjoiNHVTcDFDS0Rrc0tLTE1FWjVTR3RsVlkxVzJkeGJxTmdGMlFKMER2UGtBQT0iLCJleHAiOjE3NjkyMjY4ODgsImlhdCI6MTc0MzY5NDg4OCwic3ViIjoiMSIsInR5cGUiOiJ1c2VyIn0.gj7jrGFWBPbwk3T3gIEi0wXEfnFQQ3kD3h8mCFe6IzQ' http://localhost:8000/api/repos/netanelzucaim/semantic)",
+      "Bash(python3 -c \"import sys,json; r=json.load\\(sys.stdin\\); print\\(r.get\\(''''id'''',''''?''''\\), r.get\\(''''full_name'''',''''?''''\\)\\)\")",
+      "Bash(curl -v \"http://localhost:8000/api/repos/netanelzucaim/semantic\")",
+      "mcp__gitea__list_commits",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl get:*)"
+    ]
+  }
+}

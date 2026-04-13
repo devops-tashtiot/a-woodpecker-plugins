@@ -91,15 +91,6 @@ steps:
         else
           echo "No changelog changes to commit."
         fi
-      - |
-        # Create each tag pointing to the current HEAD (the changelog commit).
-        # This ensures tags reference the commit that includes CHANGELOG.md changes,
-        # not the prior HEAD that release.py ran against.
-        while IFS= read -r tag; do
-          [ -n "$tag" ] || continue
-          git tag -f "$tag"
-          echo ">>> Tagged: $tag → $(git rev-parse --short HEAD)"
-        done < new_tags.txt
       - git push --force --tags origin
 
   - name: Build and push plugin images

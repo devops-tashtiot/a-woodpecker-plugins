@@ -198,6 +198,7 @@ ALIASES
     echo "Component : ${rel_path}"
     echo "Version   : ${version}"
     echo "Aliases   : ${PLUGIN_ALIASES:-(none)}"
+    echo "Log level : ${log}"
     echo "Context   : ${context}"
     echo "Dockerfile: ${context}/${dockerfile_name}"
     echo "DEBUG: raw destinations='${destinations}'" >&2

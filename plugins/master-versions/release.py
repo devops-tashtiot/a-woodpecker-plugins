@@ -554,9 +554,13 @@ def release():
             print(f">>> ERROR generating changelog for {display_name}: {res.stderr.strip()}")
             continue
 
-        # ── STEP 4: RECORD TAG ────────────────────────────────────────────────
-        # Tags are created in the CI "Push changelogs to Git" step so they land
-        # on the commit that includes the CHANGELOG.md changes.
+        # ── STEP 4: CREATE TAG AND RECORD ────────────────────────────────────
+        tag_result = run_command(f"git tag -f {shlex.quote(new_tag)}")
+        if tag_result.returncode != 0:
+            print(f">>> ERROR creating tag '{new_tag}': {tag_result.stderr.strip()}")
+            continue
+        print(f">>> [INFO] Tag '{new_tag}' created locally")
+
         created_tags.append(new_tag)
         if output_tags_file:
             with open(output_tags_file, "a") as f:

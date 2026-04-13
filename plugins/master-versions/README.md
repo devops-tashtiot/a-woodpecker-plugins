@@ -88,7 +88,12 @@ For every matched component the plugin:
 1. Finds the latest existing tag for that component (e.g. `nati-1.0.3`)
 2. Calculates the next version (patch / minor / major) using git-cliff
 3. Writes or prepends the `CHANGELOG.md` entry
-4. Records the new tag (`nati-1.1.0`) to `new_tags.txt` for kaniko-master-versions
+4. Creates the git tag locally (`git tag -f nati-1.1.0`)
+5. Records the new tag to `new_tags.txt` for kaniko-master-versions
+
+The tag points to the commit at the time `release.py` runs — before the CI step commits
+the `CHANGELOG.md` changes. The tag marks the code release; the changelog update follows
+as a separate docs-only commit.
 
 ---
 
@@ -428,7 +433,7 @@ git cliff --tag-pattern '^nati-[0-9]+\.[0-9]+\.[0-9]+$' \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to append created tags to — one tag per line. Read by `kaniko-master-versions` to build images. |
+| `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to append created tags to — one tag per line. Tags are already created locally by the plugin; this file is read by `kaniko-master-versions` to know which images to build. |
 | `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | Python regex applied to every location before processing — both explicit and wildcard-expanded. Any matching location is silently skipped. Primary guard against releasing non-service folders when using `[*]`. Example: `^docs$\|^scripts$`. |
 | `PLUGIN_VERBOSE` | `0` | `0` = minimal, `1` = info, `2` = trace (full git-cliff commands and output). |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version for the first release of a component with no existing tag. |

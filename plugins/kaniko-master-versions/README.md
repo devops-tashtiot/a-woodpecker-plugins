@@ -1,6 +1,6 @@
 # kaniko-master-versions
 
-Woodpecker CI plugin that reads the tags produced by the **MasterVersions plugin** (semantic versioning via git-cliff), resolves each tag to a `Dockerfile` on disk, and builds + pushes the Docker image via Kaniko.
+Woodpecker CI plugin that reads the tags produced by the **MasterVersions plugin** (semantic versioning via git-cliff + message file), resolves each tag to a `Dockerfile` on disk, and builds + pushes the Docker image via Kaniko.
 
 Designed to run as the final step of the release pipeline, right after the MasterVersions plugin creates the git tags.
 
