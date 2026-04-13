@@ -12,20 +12,20 @@ This is a **Stateless Monorepo Release Orchestrator** (`plugins/master-versions/
 
 ### Run the release orchestrator
 ```bash
-PLUGIN_MESSAGE="feat(scope)[nati]: add dashboard" PLUGIN_BASE="." python3 plugins/master-versions/release.py
+PLUGIN_MESSAGE="feat(scope)[nati]: add dashboard" PLUGIN_BASE_PATH="." python3 plugins/master-versions/release.py
 ```
 
 ### Run with wildcards and exclusions
 ```bash
 # Wildcard — release all direct subdirs
-PLUGIN_MESSAGE="feat(scope)[*]: upgrade all" PLUGIN_BASE="." \
+PLUGIN_MESSAGE="feat(scope)[*]: upgrade all" PLUGIN_BASE_PATH="." \
   PLUGIN_SCOPE_EXCLUDE_REGEX="^docs$|^shared$" python3 plugins/master-versions/release.py
 
 # Wildcard — release all subdirs of a group
-PLUGIN_MESSAGE="feat(scope)[base/*]: refactor base" PLUGIN_BASE="." python3 plugins/master-versions/release.py
+PLUGIN_MESSAGE="feat(scope)[base/*]: refactor base" PLUGIN_BASE_PATH="." python3 plugins/master-versions/release.py
 
 # Dry run
-PLUGIN_MESSAGE="feat(scope)[nati]: test" PLUGIN_BASE="." PLUGIN_DRY_RUN=true python3 plugins/master-versions/release.py
+PLUGIN_MESSAGE="feat(scope)[nati]: test" PLUGIN_BASE_PATH="." PLUGIN_DRY_RUN=true python3 plugins/master-versions/release.py
 ```
 
 ### Run unit tests
@@ -52,7 +52,7 @@ cd plugins/kaniko-master-versions && ./test_release_docker.sh
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `PLUGIN_MESSAGE` | `""` | Yes | Text containing conventional commit lines (PR body, manual input, etc.) |
-| `PLUGIN_BASE` | `"."` | Yes | Root directory. All `[location]` paths are resolved relative to this. |
+| `PLUGIN_BASE_PATH` | `"."` | Yes | Root directory. All `[location]` paths are resolved relative to this. |
 | `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | No | Python regex — any location matching this is skipped (wildcard and explicit) |
 | `PLUGIN_OUTPUT_TAGS_FILE` | `""` | No | If set, each created tag is appended here (read by `kaniko-master-versions`) |
 | `PLUGIN_DRY_RUN` | `""` | No | `"true"` → show what would be released, skip all file writes |
@@ -65,7 +65,7 @@ cd plugins/kaniko-master-versions && ./test_release_docker.sh
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
-| `PLUGIN_BASE` | — | Yes | Directory to scan for Dockerfiles |
+| `PLUGIN_BASE_PATH` | — | Yes | Directory to scan for Dockerfiles |
 | `PLUGIN_USERNAME` | — | Yes | Registry username |
 | `PLUGIN_PASSWORD` | — | Yes | Registry password |
 | `PLUGIN_TAGS_FILE` or `PLUGIN_TAGS` | — | Yes (one of) | Tags to process — file path or inline comma/newline string |
@@ -90,7 +90,7 @@ type(scope)[location1, location2]!: description
 
 - **`type`** — must be **lowercase**, must start at the **very beginning of the line** (no leading spaces — a line like `  feat[nati]: ...` is silently ignored). Drives the version bump level via `cliff.toml`.
 - **`(scope)`** — **optional**. Free text describing what changed. Goes into the changelog entry. Does **not** affect which component is released. `feat[nati]: msg` (no scope) is valid.
-- **`[location]`** — required. The filesystem path of the component to release, relative to `PLUGIN_BASE`. Controls tag prefix, `CHANGELOG.md` location, and `--include-path` isolation. Content must not contain `[` or `]` — `feat[na[ti]: msg` will never match as a commit line.
+- **`[location]`** — required. The filesystem path of the component to release, relative to `PLUGIN_BASE_PATH`. Controls tag prefix, `CHANGELOG.md` location, and `--include-path` isolation. Content must not contain `[` or `]` — `feat[na[ti]: msg` will never match as a commit line.
 - **`!`** — optional bang after `[]`. Forces a major bump regardless of type.
 - **Validation of bang/colon/description** is delegated entirely to git-cliff (`filter_unconventional = true` in `cliff.toml`). `release.py` only removes the `[locations]` bracket and passes the rest raw to git-cliff.
 - **No line stripping**: lines are never `.strip()`-ed. A line with leading whitespace naturally fails to match `^feat` etc. Continuation lines are stored and joined exactly as written.
@@ -99,12 +99,12 @@ type(scope)[location1, location2]!: description
 
 | What you write | Meaning |
 |----------------|---------|
-| `[nati]` | Release component at `PLUGIN_BASE/nati/` → tag `nati-1.0.0` |
-| `[plugins/docker]` | Release component at `PLUGIN_BASE/plugins/docker/` → tag `plugins-docker-1.0.0` |
-| `[]` | Release repo root (`PLUGIN_BASE` itself) → tag `1.0.0` |
+| `[nati]` | Release component at `PLUGIN_BASE_PATH/nati/` → tag `nati-1.0.0` |
+| `[plugins/docker]` | Release component at `PLUGIN_BASE_PATH/plugins/docker/` → tag `plugins-docker-1.0.0` |
+| `[]` | Release repo root (`PLUGIN_BASE_PATH` itself) → tag `1.0.0` |
 | `[nati, check]` | Release both `nati` and `check` from one line |
-| `[*]` | Wildcard — expands to all direct subdirs of `PLUGIN_BASE` |
-| `[base/*]` | Wildcard — expands to all subdirs of `PLUGIN_BASE/base/` |
+| `[*]` | Wildcard — expands to all direct subdirs of `PLUGIN_BASE_PATH` |
+| `[base/*]` | Wildcard — expands to all subdirs of `PLUGIN_BASE_PATH/base/` |
 
 ### Slug Logic
 
@@ -178,8 +178,8 @@ The two plugins run as consecutive steps:
 master-versions                       kaniko-master-versions
 ──────────────────────────────        ──────────────────────────────────────
 parse PLUGIN_MESSAGE                  reads new_tags.txt line by line
-  → nati-v1.1.0                  ──►  nati-v1.1.0  → slug=nati  → PLUGIN_BASE/nati/Dockerfile
-  → plugins-docker-v2.0.0        ──►  plugins-docker-v2.0.0 → PLUGIN_BASE/plugins/docker/Dockerfile
+  → nati-v1.1.0                  ──►  nati-v1.1.0  → slug=nati  → PLUGIN_BASE_PATH/nati/Dockerfile
+  → plugins-docker-v2.0.0        ──►  plugins-docker-v2.0.0 → PLUGIN_BASE_PATH/plugins/docker/Dockerfile
 appended to new_tags.txt              builds and pushes each image via Kaniko
 ```
 

@@ -74,7 +74,7 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
 
     Returns dict[location -> set[commit_str]] where:
       - location is a path string:
-          ""          -> root (CHANGELOG at PLUGIN_BASE, tag v1.0.0)
+          ""          -> root (CHANGELOG at PLUGIN_BASE_PATH, tag v1.0.0)
           "nati"      -> nati/ (tag nati-v1.0.0)
           "base/argo" -> base/argo/ (tag base-argo-v1.0.0)
       - commit_str is the line with [locations] removed — passed as-is to git-cliff.
@@ -377,7 +377,7 @@ def release():
     except OSError as e:
         print(f">>> ERROR: Cannot read PLUGIN_MESSAGE_FILE='{message_file}': {e}")
         return
-    root_path           = os.getenv("PLUGIN_BASE", ".")
+    root_path           = os.getenv("PLUGIN_BASE_PATH", ".")
     output_tags_file    = os.getenv("PLUGIN_OUTPUT_TAGS_FILE", "")
     exclude_regex       = os.getenv("PLUGIN_SCOPE_EXCLUDE_REGEX", "")
     try:
@@ -401,7 +401,7 @@ def release():
     _print_cliff_rules(parsers, bump_cfg, global_toml)
 
     print(f">>> PLUGIN_CHANGELOG_LEVEL={changelog_level}")
-    print(f">>> PLUGIN_BASE='{root_path}' — root directory; all [location] paths are resolved relative to this")
+    print(f">>> PLUGIN_BASE_PATH='{root_path}' — root directory; all [location] paths are resolved relative to this")
 
     # ── Parse PR body ─────────────────────────────────────────────────────────
     location_to_commits = parse_pr_body(pr_body, parsers, changelog_level=changelog_level)

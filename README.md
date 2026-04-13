@@ -37,7 +37,7 @@ No scope needed.            One level of folders          plugins/
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `PR_BODY` | `""` | Yes | The PR body text containing conventional commit lines |
-| `PLUGIN_BASE` | `"."` | Yes | Root directory to scan from. All component paths are relative to this. |
+| `PLUGIN_BASE_PATH` | `"."` | Yes | Root directory to scan from. All component paths are relative to this. |
 | `SCOPE_DEPTH` | `"1"` | No | Repo structure depth: `0`=polyrepo, `1`=monorepo, `2`=nested |
 | `SCOPE_EXCLUDE_REGEX` | `""` | No | Python regex — any scope matching this is skipped (wildcard and explicit) |
 | `OUTPUT_TAGS_FILE` | `""` | No | If set, each successfully created tag is appended to this file (used by `kaniko-monorepo-cliff`) |
@@ -78,7 +78,7 @@ Result:
 
 ## Depth 1 — Monorepo
 
-**Use when:** multiple services live as direct subdirectories under `PLUGIN_BASE`.
+**Use when:** multiple services live as direct subdirectories under `PLUGIN_BASE_PATH`.
 
 ```
 repo/
@@ -90,7 +90,7 @@ repo/
 
 **PR body format:** `type(scope): message`
 
-Scope = the folder name directly under `PLUGIN_BASE`.
+Scope = the folder name directly under `PLUGIN_BASE_PATH`.
 
 ```
 feat(nati): add dashboard
@@ -123,7 +123,7 @@ Result:
 ```
 PR body: feat(*): upgrade all dependencies
 
-PLUGIN_BASE contains: nati/, plugins/, base/, docs/
+PLUGIN_BASE_PATH contains: nati/, plugins/, base/, docs/
 
 Result (assuming no SCOPE_EXCLUDE_REGEX):
   → nati-v1.1.0
@@ -201,8 +201,8 @@ The wildcard `*` automatically discovers and releases all components in a group.
 
 | Depth | Wildcard form | What it discovers |
 |-------|--------------|-------------------|
-| 1 | `feat(*): msg` | All direct subdirs of `PLUGIN_BASE` |
-| 2 | `feat(base/*): msg` | All subdirs of `PLUGIN_BASE/base/` |
+| 1 | `feat(*): msg` | All direct subdirs of `PLUGIN_BASE_PATH` |
+| 2 | `feat(base/*): msg` | All subdirs of `PLUGIN_BASE_PATH/base/` |
 | 2 | `feat(*): msg` | ❌ Invalid — must specify group prefix |
 
 The `*` **only expands directories that exist on disk** at pipeline time. If you add a new service folder, it's automatically included in the next `feat(*): msg` PR.
@@ -394,7 +394,7 @@ Result:
 ### Complex example — nested monorepo with mixed types and exclude
 
 ```yaml
-PLUGIN_BASE: "."
+PLUGIN_BASE_PATH: "."
 SCOPE_DEPTH: "2"
 SCOPE_EXCLUDE_REGEX: "^base/legacy"
 ```
@@ -427,20 +427,20 @@ Result:
 
 ```bash
 # Standard run
-PR_BODY="feat(nati): add dashboard" PLUGIN_BASE="." python3 release.py
+PR_BODY="feat(nati): add dashboard" PLUGIN_BASE_PATH="." python3 release.py
 
 # Polyrepo
-PR_BODY="feat: new feature" PLUGIN_BASE="." SCOPE_DEPTH=0 python3 release.py
+PR_BODY="feat: new feature" PLUGIN_BASE_PATH="." SCOPE_DEPTH=0 python3 release.py
 
 # Wildcard with exclusion
-PR_BODY="feat(*): upgrade all" PLUGIN_BASE="." SCOPE_DEPTH=1 \
+PR_BODY="feat(*): upgrade all" PLUGIN_BASE_PATH="." SCOPE_DEPTH=1 \
   SCOPE_EXCLUDE_REGEX="^docs$|^shared$" python3 release.py
 
 # Nested monorepo, group wildcard
-PR_BODY="feat(base/*): refactor base" PLUGIN_BASE="." SCOPE_DEPTH=2 python3 release.py
+PR_BODY="feat(base/*): refactor base" PLUGIN_BASE_PATH="." SCOPE_DEPTH=2 python3 release.py
 
 # Capture created tags for downstream steps (e.g. kaniko-monorepo-cliff)
-PR_BODY="feat(nati): upgrade" PLUGIN_BASE="." OUTPUT_TAGS_FILE="new_tags.txt" python3 release.py
+PR_BODY="feat(nati): upgrade" PLUGIN_BASE_PATH="." OUTPUT_TAGS_FILE="new_tags.txt" python3 release.py
 ```
 
 ## Running tests

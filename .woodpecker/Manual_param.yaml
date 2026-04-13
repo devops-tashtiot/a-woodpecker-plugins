@@ -22,7 +22,7 @@ steps:
   - name: Run release
     image: netanelzucaim123/master-versions:latest
     environment:
-      PLUGIN_BASE: "."
+      PLUGIN_BASE_PATH: "."
       PLUGIN_SCOPE_EXCLUDE_REGEX: ""
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       PLUGIN_MESSAGE_FILE: "pr_body.txt"
@@ -30,32 +30,32 @@ steps:
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:
       - |
-        for var in PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX; do
+        for var in PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX; do
           val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
           if [ -n "$val" ]; then
             export "$var=$val"
             echo ">>> Override: $var=$val"
           fi
         done
-      - echo ">>> PLUGIN_BASE=$PLUGIN_BASE PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
+      - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
       - python3 /app/release.py
 
   - name: Push changelogs to Git
     image: alpine/git
     environment:
-      PLUGIN_BASE: "."
+      PLUGIN_BASE_PATH: "."
       SCOPE_DEPTH: "1"
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
-        for var in SCOPE_DEPTH PLUGIN_BASE; do
+        for var in SCOPE_DEPTH PLUGIN_BASE_PATH; do
           val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
           if [ -n "$val" ]; then
             export "$var=$val"
             echo ">>> Override: $var=$val"
           fi
         done
-      - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE=$PLUGIN_BASE"
+      - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH"
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
@@ -81,16 +81,16 @@ steps:
     commands:
       - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
-        val=$(grep -m 1 "^PLUGIN_BASE=" pr_body.txt | cut -d= -f2-)
+        val=$(grep -m 1 "^PLUGIN_BASE_PATH=" pr_body.txt | cut -d= -f2-)
         if [ -n "$val" ]; then
-          export PLUGIN_BASE="$val"
-          echo ">>> Override: PLUGIN_BASE=$val"
+          export PLUGIN_BASE_PATH="$val"
+          echo ">>> Override: PLUGIN_BASE_PATH=$val"
         fi
-      - echo ">>> PLUGIN_BASE=$PLUGIN_BASE"
+      - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH"
       - /app/plugin.sh
     environment:
       PLUGIN_DRY_RUN: "true"
-      PLUGIN_BASE: "."
+      PLUGIN_BASE_PATH: "."
       PLUGIN_REGISTRY: "10.89.0.1:5000"
       PLUGIN_REPO: "plugins/master-versions"
       PLUGIN_TAGS_FILE: "new_tags.txt"

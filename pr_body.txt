@@ -1,3 +1,3 @@
 feat(lagziel): initial release
-PLUGIN_BASE=./plugins
+PLUGIN_BASE_PATH=./plugins
 SCOPE_DEPTH=1

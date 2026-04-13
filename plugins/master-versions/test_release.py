@@ -729,7 +729,7 @@ class TestRelease(unittest.TestCase):
 
         env = {
             "PLUGIN_MESSAGE_FILE":        tmp_path,
-            "PLUGIN_BASE":                "/repo",
+            "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": exclude_regex,
             "PLUGIN_OUTPUT_TAGS_FILE":    output_tags_file,
             "PLUGIN_VERBOSE":             "0",
@@ -756,7 +756,7 @@ class TestRelease(unittest.TestCase):
 
         Example:
           PLUGIN_MESSAGE = "feat(auth)[nati]: add login"
-          PLUGIN_BASE    = "/repo"
+          PLUGIN_BASE_PATH    = "/repo"
           No existing tags (run_command for git tag returns empty stdout).
           git cliff --bump --bumped-version → "nati-1.0.0"  (first release)
           git cliff --tag 'nati-1.0.0' --output ... → writes CHANGELOG.md
@@ -851,7 +851,7 @@ class TestChangelogLevel(unittest.TestCase):
                 and skips locations with 1+ slashes (nested paths).
 
         Why this matters: the most common monorepo setup — all components sit
-        directly under PLUGIN_BASE. Setting level=1 enforces that no nested path
+        directly under PLUGIN_BASE_PATH. Setting level=1 enforces that no nested path
         can accidentally trigger a release.
 
         Body:
@@ -1004,7 +1004,7 @@ class TestChangelogLevel(unittest.TestCase):
             # PLUGIN_MESSAGE_FILE is not reached — release() exits before it
             # when PLUGIN_CHANGELOG_LEVEL is unset.
             "PLUGIN_MESSAGE_FILE":        "dummy.txt",
-            "PLUGIN_BASE":                "/repo",
+            "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
             "PLUGIN_VERBOSE":             "0",
@@ -1039,7 +1039,7 @@ class TestChangelogLevel(unittest.TestCase):
             # PLUGIN_MESSAGE_FILE is not reached — release() exits before it
             # when PLUGIN_CHANGELOG_LEVEL is non-integer.
             "PLUGIN_MESSAGE_FILE":        "dummy.txt",
-            "PLUGIN_BASE":                "/repo",
+            "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
             "PLUGIN_VERBOSE":             "0",
@@ -1089,7 +1089,7 @@ class TestCliffTomlResolution(unittest.TestCase):
 
         env = {
             "PLUGIN_MESSAGE_FILE":        tmp_path,
-            "PLUGIN_BASE":                "/repo",
+            "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
             "PLUGIN_VERBOSE":             "0",

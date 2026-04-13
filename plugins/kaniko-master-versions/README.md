@@ -10,15 +10,15 @@ Designed to run as the final step of the release pipeline, right after the Maste
 
 1. Reads a list of tags from the file written by the MasterVersions plugin (e.g. `new_tags.txt`)
 2. For each tag, extracts the **slug** and **version**
-3. Scans `PLUGIN_BASE` to find the `Dockerfile` whose parent directory matches the slug
+3. Scans `PLUGIN_BASE_PATH` to find the `Dockerfile` whose parent directory matches the slug
 4. Builds and pushes the image via `/kaniko/executor`
 
 ### Tag → path resolution
 
 The plugin splits every tag into a **slug** (everything before the version) and a **version** (the trailing semver).
-The slug is then converted back to a filesystem path by replacing `-` with `/` and scanning `PLUGIN_BASE` for a matching directory.
+The slug is then converted back to a filesystem path by replacing `-` with `/` and scanning `PLUGIN_BASE_PATH` for a matching directory.
 
-| Tag | PLUGIN_BASE | Resolved path | Dockerfile location | Image pushed |
+| Tag | PLUGIN_BASE_PATH | Resolved path | Dockerfile location | Image pushed |
 |-----|-------------|---------------|---------------------|--------------|
 | `harel-v1.3.4` | `check/plugins` | `harel` | `check/plugins/harel/Dockerfile` | `registry/repo/harel:v1.3.4` |
 | `netanel-1.0.0` | `check/plugins` | `netanel` | `check/plugins/netanel/Dockerfile` | `registry/repo/netanel:1.0.0` |
@@ -27,10 +27,10 @@ The slug is then converted back to a filesystem path by replacing `-` with `/` a
 
 ### How the Dockerfile path is built
 
-The full path to the Dockerfile is always: `PLUGIN_BASE / resolved_path / Dockerfile`
+The full path to the Dockerfile is always: `PLUGIN_BASE_PATH / resolved_path / Dockerfile`
 
 ```
-Tag                        Slug               PLUGIN_BASE        Resolved path     Dockerfile
+Tag                        Slug               PLUGIN_BASE_PATH        Resolved path     Dockerfile
 ─────────────────────────────────────────────────────────────────────────────────────────────
 harel-v1.3.4               harel              check/plugins   →  harel          →  check/plugins/harel/Dockerfile
 netanel-1.0.0              netanel            check/plugins   →  netanel        →  check/plugins/netanel/Dockerfile
@@ -40,9 +40,9 @@ base-argo-v1.1.0           base-argo          services        →  base/argo    
 v1.5.6                     (empty)            check/plugins/harel → . (root)    →  check/plugins/harel/Dockerfile
 ```
 
-The slug-to-path conversion scans `PLUGIN_BASE` recursively for a `Dockerfile` whose parent directory,
+The slug-to-path conversion scans `PLUGIN_BASE_PATH` recursively for a `Dockerfile` whose parent directory,
 when its slashes are replaced with hyphens, matches the slug exactly.
-This means `PLUGIN_BASE` controls the tag prefix length — a deeper base means shorter slugs and shorter tags.
+This means `PLUGIN_BASE_PATH` controls the tag prefix length — a deeper base means shorter slugs and shorter tags.
 
 > **Note — slug collision:** Because `/` and `-` both map to `-`, a path like `plugins/kaniko-master-versions/`
 > and `plugins-kaniko/master-versions/` would produce the same slug `plugins-kaniko-master-versions`.
@@ -58,7 +58,7 @@ All of the following are understood — no fixed format is assumed:
 harel-v1.3.4          slug=harel           version=v1.3.4
 plugins-netanel-1.0.0 slug=plugins-netanel  version=1.0.0
 netanel-1.8           slug=netanel          version=1.8
-1.5.6                 slug=(empty)          version=1.5.6  → Dockerfile at PLUGIN_BASE root
+1.5.6                 slug=(empty)          version=1.5.6  → Dockerfile at PLUGIN_BASE_PATH root
 ```
 
 ---
@@ -69,7 +69,7 @@ netanel-1.8           slug=netanel          version=1.8
 
 | Variable | Description |
 |----------|-------------|
-| `PLUGIN_BASE` | Directory to scan for Dockerfiles. Set to wherever your component folders live. |
+| `PLUGIN_BASE_PATH` | Directory to scan for Dockerfiles. Set to wherever your component folders live. |
 | `PLUGIN_USERNAME` | Registry username |
 | `PLUGIN_PASSWORD` | Registry password |
 | `PLUGIN_TAGS_FILE` **or** `PLUGIN_TAGS` | Tags to process. File path (newline-separated) or inline comma/newline-separated string. |
@@ -124,8 +124,8 @@ reads it. Both steps must share the same workspace so the file is visible to bot
 master-versions                       kaniko-master-versions
 ──────────────────────────────        ──────────────────────────────────────
 run conventional commit script        reads new_tags.txt line by line
-  → nati-v1.1.0                  ──►  nati-v1.1.0  → slug=nati  → PLUGIN_BASE/nati/Dockerfile
-  → plugins-docker-v2.0.0        ──►  plugins-docker-v2.0.0 → slug=plugins-docker → PLUGIN_BASE/plugins/docker/Dockerfile
+  → nati-v1.1.0                  ──►  nati-v1.1.0  → slug=nati  → PLUGIN_BASE_PATH/nati/Dockerfile
+  → plugins-docker-v2.0.0        ──►  plugins-docker-v2.0.0 → slug=plugins-docker → PLUGIN_BASE_PATH/plugins/docker/Dockerfile
 appended to new_tags.txt              builds and pushes each image via Kaniko
 ```
 

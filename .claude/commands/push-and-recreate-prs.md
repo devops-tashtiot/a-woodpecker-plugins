@@ -39,7 +39,7 @@ Run the following steps in order inside the `semantic/` directory:
 7. Create all test PRs via the Gitea MCP tool (`mcp__gitea__pull_request_write`).
    For each PR: create a feature branch from main, add a dummy commit, then open a PR
    with the body containing BOTH the conventional commit line AND any env var overrides
-   needed (SCOPE_DEPTH=, PLUGIN_BASE=, SCOPE_EXCLUDE_REGEX=).
+   needed (SCOPE_DEPTH=, PLUGIN_BASE_PATH=, SCOPE_EXCLUDE_REGEX=).
 
    The full set of PRs to create covers every scenario from `test_release_docker.sh`
    and `test_release.py`:
@@ -88,7 +88,7 @@ Run the following steps in order inside the `semantic/` directory:
    - `docs(nati): update readme` + `SCOPE_DEPTH=1`
    - `ci(nati): update pipeline` + `SCOPE_DEPTH=1`
 
-   **PLUGIN_BASE override:**
-   - `feat(harel): plugin base test` + `SCOPE_DEPTH=1` + `PLUGIN_BASE=plugins`
+   **PLUGIN_BASE_PATH override:**
+   - `feat(harel): plugin base test` + `SCOPE_DEPTH=1` + `PLUGIN_BASE_PATH=plugins`
 
 After each step, report the output to the user. If any step fails, stop and explain the error.

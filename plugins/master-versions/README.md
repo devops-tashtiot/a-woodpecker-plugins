@@ -207,12 +207,12 @@ Controls **three things** simultaneously:
 
 | What you write | What it means |
 |----------------|---------------|
-| `[nati]` | component at `PLUGIN_BASE/nati/` → tag `nati-1.0.0` |
-| `[plugins/docker]` | component at `PLUGIN_BASE/plugins/docker/` → tag `plugins-docker-1.0.0` |
-| `[]` | repo root (`PLUGIN_BASE` itself) → tag `1.0.0` |
+| `[nati]` | component at `PLUGIN_BASE_PATH/nati/` → tag `nati-1.0.0` |
+| `[plugins/docker]` | component at `PLUGIN_BASE_PATH/plugins/docker/` → tag `plugins-docker-1.0.0` |
+| `[]` | repo root (`PLUGIN_BASE_PATH` itself) → tag `1.0.0` |
 | `[nati, check]` | releases **both** `nati` and `check` from one line |
 | `[plugins/*]` | wildcard — expands to **all subdirectories** of `plugins/` |
-| `[*]` | wildcard — expands to **all direct subdirectories** of `PLUGIN_BASE` |
+| `[*]` | wildcard — expands to **all direct subdirectories** of `PLUGIN_BASE_PATH` |
 
 Slashes in the path become hyphens in the tag: `plugins/docker` → `plugins-docker-1.0.0`.
 
@@ -368,12 +368,12 @@ feat(dependency upgrades)[plugins/*]: bump all third-party libs to latest
 
 ---
 
-### Wildcard — release everything under PLUGIN_BASE
+### Wildcard — release everything under PLUGIN_BASE_PATH
 
 ```
 feat(Go 1.22 migration)[*]: update all components to Go 1.22
 ```
-→ Expands to every direct subdirectory of `PLUGIN_BASE`.
+→ Expands to every direct subdirectory of `PLUGIN_BASE_PATH`.
 
 ---
 
@@ -474,7 +474,7 @@ To make `chore` releasable, add it to `cliff.toml`:
 | Variable | Description |
 |----------|-------------|
 | `PLUGIN_MESSAGE` | Text containing conventional commit lines. Can be a PR body, manual trigger input, pipeline variable, cron message, etc. |
-| `PLUGIN_BASE` | **The single most important variable.** The root directory all component locations are resolved against. Every path you write inside `[]` is joined onto this. Getting this wrong means the plugin looks for components in the wrong place, creates tags with wrong slugs, and writes `CHANGELOG.md` files in the wrong directories. When in doubt, set it to `"."` (repo root) and write full relative paths in `[]`. Its value and meaning are printed at startup: `>>> PLUGIN_BASE='.' — root directory; all [location] paths are resolved relative to this`. |
+| `PLUGIN_BASE_PATH` | **The single most important variable.** The root directory all component locations are resolved against. Every path you write inside `[]` is joined onto this. Getting this wrong means the plugin looks for components in the wrong place, creates tags with wrong slugs, and writes `CHANGELOG.md` files in the wrong directories. When in doubt, set it to `"."` (repo root) and write full relative paths in `[]`. Its value and meaning are printed at startup: `>>> PLUGIN_BASE_PATH='.' — root directory; all [location] paths are resolved relative to this`. |
 | `PLUGIN_CHANGELOG_LEVEL` | **Required.** Enforces the expected path depth of every `[location]` in `PLUGIN_MESSAGE`. Lines whose locations do not match the declared level are skipped. Level 0 = root only (`[]`). Level 1 = top-level dirs (`[nati]`, 0 slashes). Level 2 = one-level nested (`[plugins/docker]`, 1 slash). Level N = N−1 slashes. If not set the plugin prints an error and exits immediately. |
 
 ### Optional
@@ -488,17 +488,17 @@ To make `chore` releasable, add it to `cliff.toml`:
 | `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prepend `v` to the version number. `true` → `nati-v1.0.0`, unset/false → `nati-1.0.0` |
 | `PLUGIN_CLIFF_TOML` | *(see below)* | Path to a custom `cliff.toml`. Resolution order: (1) this variable if set, (2) `./cliff.toml` in the working directory if it exists, (3) the `cliff.toml` bundled in the Docker image. |
 
-#### `PLUGIN_BASE` examples
+#### `PLUGIN_BASE_PATH` examples
 
 ```
 repo/
-  nati/          ← PLUGIN_BASE="."  →  location [nati]
+  nati/          ← PLUGIN_BASE_PATH="."  →  location [nati]
   plugins/
-    docker/      ← PLUGIN_BASE="."  →  location [plugins/docker]
-                    PLUGIN_BASE="./plugins"  →  location [docker]
+    docker/      ← PLUGIN_BASE_PATH="."  →  location [plugins/docker]
+                    PLUGIN_BASE_PATH="./plugins"  →  location [docker]
 ```
 
-Setting `PLUGIN_BASE="./plugins"` lets you write shorter locations (`[docker]`
+Setting `PLUGIN_BASE_PATH="./plugins"` lets you write shorter locations (`[docker]`
 instead of `[plugins/docker]`) but your tags will be `docker-1.0.0` instead of
 `plugins-docker-1.0.0`. Choose based on what tag names you want.
 

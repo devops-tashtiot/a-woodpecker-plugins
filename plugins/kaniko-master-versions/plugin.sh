@@ -10,7 +10,7 @@ set -euo pipefail
 # builds + pushes the image via /kaniko/executor.
 #
 # Required:
-#   PLUGIN_BASE       — directory to scan for Dockerfiles.
+#   PLUGIN_BASE_PATH       — directory to scan for Dockerfiles.
 #                       Point to wherever your component folders live.
 #                       e.g. "check/plugins" → slug "harel" finds check/plugins/harel/Dockerfile
 #                       e.g. "."             → slug "check-plugins-harel" finds check/plugins/harel/Dockerfile
@@ -37,7 +37,7 @@ set -euo pipefail
 
 validate_required() {
     local missing=""
-    [ -z "${PLUGIN_BASE:-}"     ] && missing="${missing}  PLUGIN_BASE\n"
+    [ -z "${PLUGIN_BASE_PATH:-}"     ] && missing="${missing}  PLUGIN_BASE_PATH\n"
     [ -z "${PLUGIN_USERNAME:-}" ] && missing="${missing}  PLUGIN_USERNAME\n"
     [ -z "${PLUGIN_PASSWORD:-}" ] && missing="${missing}  PLUGIN_PASSWORD\n"
 
@@ -74,7 +74,7 @@ extract_version() {
 }
 
 # Return everything BEFORE the version suffix and its hyphen separator.
-# Returns empty string if the whole tag IS the version (Dockerfile at PLUGIN_BASE root).
+# Returns empty string if the whole tag IS the version (Dockerfile at PLUGIN_BASE_PATH root).
 extract_slug() {
     local tag="${1}"
     local ver
@@ -92,13 +92,13 @@ extract_slug() {
 }
 
 
-# Given a slug, scan PLUGIN_BASE for a Dockerfile whose parent directory
+# Given a slug, scan PLUGIN_BASE_PATH for a Dockerfile whose parent directory
 # converts to that slug (replacing "/" with "-").
-# Empty slug → Dockerfile at PLUGIN_BASE root itself.
+# Empty slug → Dockerfile at PLUGIN_BASE_PATH root itself.
 # Prints relative path (e.g. "harel") or "." for root; exits 1 if not found.
 find_path_for_slug() {
     local slug="${1}"
-    local base="${PLUGIN_BASE}"
+    local base="${PLUGIN_BASE_PATH}"
     base="${base%/}"
     local dockerfile_name="${PLUGIN_DOCKERFILE:-Dockerfile}"
 
@@ -138,12 +138,12 @@ find_path_for_slug() {
 }
 
 # Build and push one image.
-# $1 — rel_path relative to PLUGIN_BASE ("harel" or "." for root)
+# $1 — rel_path relative to PLUGIN_BASE_PATH ("harel" or "." for root)
 # $2 — version as found in the tag (may include "v" prefix)
 build_image() {
     local rel_path="${1}"
     local version="${2}"
-    local base="${PLUGIN_BASE}"
+    local base="${PLUGIN_BASE_PATH}"
     base="${base%/}"
     local registry="${PLUGIN_REGISTRY:-index.docker.io}"
     local repo="${PLUGIN_REPO:-}"
@@ -217,7 +217,7 @@ ALIASES
 }
 
 run() {
-    local base="${PLUGIN_BASE}"
+    local base="${PLUGIN_BASE_PATH}"
 
     local tags_input=""
     if [ -n "${PLUGIN_TAGS_FILE:-}" ] && [ -f "${PLUGIN_TAGS_FILE}" ]; then

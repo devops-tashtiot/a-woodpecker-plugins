@@ -200,7 +200,7 @@ assert_eq "2.3 nested slug v-prefix does not bleed into slug" \
 
 # 2.4 — Version-only tag → empty slug.
 # When master-versions releases the repo root (location ""), the tag has no
-# prefix.  Empty slug tells find_path_for_slug to look at PLUGIN_BASE root.
+# prefix.  Empty slug tells find_path_for_slug to look at PLUGIN_BASE_PATH root.
 assert_eq "2.4 version-only tag gives empty slug" \
     "$(extract_slug '1.0.0')" ""
 
@@ -212,25 +212,25 @@ echo ""
 
 
 # =============================================================================
-# SECTION 3: find_path_for_slug — PLUGIN_BASE = repo root (TMPWS)
+# SECTION 3: find_path_for_slug — PLUGIN_BASE_PATH = repo root (TMPWS)
 #
 # How the reverse lookup works:
-#   find PLUGIN_BASE -name Dockerfile | sort
+#   find PLUGIN_BASE_PATH -name Dockerfile | sort
 #   for each found file:
-#     rel  = parent_dir stripped of PLUGIN_BASE prefix
+#     rel  = parent_dir stripped of PLUGIN_BASE_PATH prefix
 #     slug = rel with every / replaced by -
 #     if slug == target_slug -> return rel
 #
-# With PLUGIN_BASE at the repo root, the full directory path contributes to
+# With PLUGIN_BASE_PATH at the repo root, the full directory path contributes to
 # the slug: plugins/master-versions -> slug plugins-master-versions.
 # =============================================================================
 echo "┌────────────────────────────────────────────"
-echo "│ SECTION 3: find_path_for_slug (PLUGIN_BASE = repo root)"
+echo "│ SECTION 3: find_path_for_slug (PLUGIN_BASE_PATH = repo root)"
 echo "└────────────────────────────────────────────"
 
-export PLUGIN_BASE="${TMPWS}"
+export PLUGIN_BASE_PATH="${TMPWS}"
 
-# 3.1 — Core case: PLUGIN_BASE=. and tag plugins-master-versions-1.0.0.
+# 3.1 — Core case: PLUGIN_BASE_PATH=. and tag plugins-master-versions-1.0.0.
 # find scans TMPWS, finds TMPWS/plugins/master-versions/Dockerfile,
 # strips TMPWS/ -> rel=plugins/master-versions -> slug=plugins-master-versions -> match.
 assert_eq "3.1 plugins-master-versions -> plugins/master-versions" \
@@ -250,7 +250,7 @@ assert_eq "3.4 deep-nested-component -> deep/nested/component" \
     "$(find_path_for_slug 'deep-nested-component')" "deep/nested/component"
 
 # 3.5 — Empty slug = root Dockerfile.
-# The function short-circuits for empty slug: checks for PLUGIN_BASE/Dockerfile
+# The function short-circuits for empty slug: checks for PLUGIN_BASE_PATH/Dockerfile
 # directly and returns "." without scanning the whole tree.
 assert_eq "3.5 empty slug finds root Dockerfile" \
     "$(find_path_for_slug '')" "."
@@ -268,19 +268,19 @@ echo ""
 
 
 # =============================================================================
-# SECTION 4: find_path_for_slug — PLUGIN_BASE = TMPWS/plugins
+# SECTION 4: find_path_for_slug — PLUGIN_BASE_PATH = TMPWS/plugins
 #
-# Shifting PLUGIN_BASE one level deeper shortens slugs.  The same Dockerfiles
+# Shifting PLUGIN_BASE_PATH one level deeper shortens slugs.  The same Dockerfiles
 # are on disk but rel is now computed relative to TMPWS/plugins/:
 #   plugins/master-versions/Dockerfile -> rel=master-versions -> slug=master-versions
 #
-# Main case: PLUGIN_BASE=plugins + tag master-versions-1.0.0 -> master-versions/
+# Main case: PLUGIN_BASE_PATH=plugins + tag master-versions-1.0.0 -> master-versions/
 # =============================================================================
 echo "┌────────────────────────────────────────────"
-echo "│ SECTION 4: find_path_for_slug (PLUGIN_BASE = plugins/)"
+echo "│ SECTION 4: find_path_for_slug (PLUGIN_BASE_PATH = plugins/)"
 echo "└────────────────────────────────────────────"
 
-export PLUGIN_BASE="${TMPWS}/plugins"
+export PLUGIN_BASE_PATH="${TMPWS}/plugins"
 
 # 4.1 — Short slug resolves with shallow base.
 assert_eq "4.1 master-versions -> master-versions (base=plugins/)" \
@@ -291,7 +291,7 @@ assert_eq "4.2 kaniko-master-versions -> kaniko-master-versions (base=plugins/)"
     "$(find_path_for_slug 'kaniko-master-versions')" "kaniko-master-versions"
 
 # 4.3 — Full slug (plugins-master-versions) must NOT match under plugins/ base.
-# Proves that changing PLUGIN_BASE actually changes the slug namespace and a
+# Proves that changing PLUGIN_BASE_PATH actually changes the slug namespace and a
 # tag generated with one base cannot silently resolve under a different base.
 if find_path_for_slug 'plugins-master-versions' 2>/dev/null; then
     fail "4.3 full slug must not resolve under plugins/ base" "expected exit 1"
@@ -303,17 +303,17 @@ echo ""
 
 
 # =============================================================================
-# SECTION 5: run() routing — PLUGIN_BASE = repo root
+# SECTION 5: run() routing — PLUGIN_BASE_PATH = repo root
 #
 # Tests the full pipeline: tag string -> extract_version + extract_slug ->
 # find_path_for_slug -> build_image call.
 # build_image is mocked; each call appends one line to BUILD_LOG.
 # =============================================================================
 echo "┌────────────────────────────────────────────"
-echo "│ SECTION 5: run() routing (PLUGIN_BASE = repo root)"
+echo "│ SECTION 5: run() routing (PLUGIN_BASE_PATH = repo root)"
 echo "└────────────────────────────────────────────"
 
-export PLUGIN_BASE="${TMPWS}"
+export PLUGIN_BASE_PATH="${TMPWS}"
 export PLUGIN_USERNAME="user"
 export PLUGIN_PASSWORD="pass"
 unset PLUGIN_TAGS_FILE 2>/dev/null || true
@@ -382,21 +382,21 @@ echo ""
 
 
 # =============================================================================
-# SECTION 6: run() routing — PLUGIN_BASE = plugins/
+# SECTION 6: run() routing — PLUGIN_BASE_PATH = plugins/
 #
 # Same Dockerfiles; base is one level deeper.
 # Tags are now shorter: master-versions-1.0.0 instead of
 # plugins-master-versions-1.0.0.
 # =============================================================================
 echo "┌────────────────────────────────────────────"
-echo "│ SECTION 6: run() routing (PLUGIN_BASE = plugins/)"
+echo "│ SECTION 6: run() routing (PLUGIN_BASE_PATH = plugins/)"
 echo "└────────────────────────────────────────────"
 
-export PLUGIN_BASE="${TMPWS}/plugins"
+export PLUGIN_BASE_PATH="${TMPWS}/plugins"
 unset PLUGIN_TAGS_FILE 2>/dev/null || true
 
 # 6.1 — Short tag + shallow base end-to-end.
-# With PLUGIN_BASE=plugins, master-versions-1.0.0 maps to master-versions/
+# With PLUGIN_BASE_PATH=plugins, master-versions-1.0.0 maps to master-versions/
 # instead of plugins/master-versions/.
 > "${BUILD_LOG}"
 export PLUGIN_TAGS="master-versions-1.0.0"
@@ -412,8 +412,8 @@ assert_contains "6.2 kaniko-master-versions-3.0.0 with base=plugins/" \
     "$(cat "${BUILD_LOG}")" "BUILD:path=kaniko-master-versions,ver=3.0.0"
 
 # 6.3 — Full slug with wrong base must WARN, not build anything.
-# If a tag was generated with PLUGIN_BASE=. but the plugin runs with
-# PLUGIN_BASE=plugins, the lookup fails safely instead of building silently.
+# If a tag was generated with PLUGIN_BASE_PATH=. but the plugin runs with
+# PLUGIN_BASE_PATH=plugins, the lookup fails safely instead of building silently.
 > "${BUILD_LOG}"
 export PLUGIN_TAGS="plugins-master-versions-1.0.0"
 out="$(run 2>&1 || true)"
@@ -433,7 +433,7 @@ echo "┌───────────────────────�
 echo "│ SECTION 7: PLUGIN_TAGS_FILE"
 echo "└────────────────────────────────────────────"
 
-export PLUGIN_BASE="${TMPWS}"
+export PLUGIN_BASE_PATH="${TMPWS}"
 TAGS_FILE="$(mktemp)"
 
 # 7.1 — Single tag from file.
@@ -487,32 +487,32 @@ echo "┌───────────────────────�
 echo "│ SECTION 8: validate_required"
 echo "└────────────────────────────────────────────"
 
-# 8.1 — Missing PLUGIN_BASE.
+# 8.1 — Missing PLUGIN_BASE_PATH.
 # Error message must name the missing variable so the user knows what to fix.
-out="$( (unset PLUGIN_BASE; export PLUGIN_USERNAME="u"; export PLUGIN_PASSWORD="p";
+out="$( (unset PLUGIN_BASE_PATH; export PLUGIN_USERNAME="u"; export PLUGIN_PASSWORD="p";
           export PLUGIN_TAGS="x"; validate_required) 2>&1 || true)"
-assert_contains "8.1 missing PLUGIN_BASE: error names PLUGIN_BASE" "${out}" "PLUGIN_BASE"
+assert_contains "8.1 missing PLUGIN_BASE_PATH: error names PLUGIN_BASE_PATH" "${out}" "PLUGIN_BASE_PATH"
 
 # 8.2 — Missing PLUGIN_USERNAME.
-out="$( (export PLUGIN_BASE="."; unset PLUGIN_USERNAME; export PLUGIN_PASSWORD="p";
+out="$( (export PLUGIN_BASE_PATH="."; unset PLUGIN_USERNAME; export PLUGIN_PASSWORD="p";
           export PLUGIN_TAGS="x"; validate_required) 2>&1 || true)"
 assert_contains "8.2 missing PLUGIN_USERNAME: error names PLUGIN_USERNAME" "${out}" "PLUGIN_USERNAME"
 
 # 8.2b — Missing PLUGIN_PASSWORD.
 # Without a password the docker auth base64 encoding has nothing to encode
 # and the registry push would fail with an authentication error.
-out="$( (export PLUGIN_BASE="."; export PLUGIN_USERNAME="u"; unset PLUGIN_PASSWORD;
+out="$( (export PLUGIN_BASE_PATH="."; export PLUGIN_USERNAME="u"; unset PLUGIN_PASSWORD;
           export PLUGIN_TAGS="x"; validate_required) 2>&1 || true)"
 assert_contains "8.2b missing PLUGIN_PASSWORD: error names PLUGIN_PASSWORD" "${out}" "PLUGIN_PASSWORD"
 
 # 8.3 — Neither PLUGIN_TAGS nor PLUGIN_TAGS_FILE provided.
 # Either one is acceptable; if both are absent validation must fail.
-out="$( (export PLUGIN_BASE="."; export PLUGIN_USERNAME="u"; export PLUGIN_PASSWORD="p";
+out="$( (export PLUGIN_BASE_PATH="."; export PLUGIN_USERNAME="u"; export PLUGIN_PASSWORD="p";
           unset PLUGIN_TAGS; unset PLUGIN_TAGS_FILE; validate_required) 2>&1 || true)"
 assert_contains "8.3 missing both tags vars: error names PLUGIN_TAGS" "${out}" "PLUGIN_TAGS"
 
 # 8.4 — All required vars present → must exit 0 (no false positives).
-if ( export PLUGIN_BASE="."; export PLUGIN_USERNAME="u"; export PLUGIN_PASSWORD="p"; \
+if ( export PLUGIN_BASE_PATH="."; export PLUGIN_USERNAME="u"; export PLUGIN_PASSWORD="p"; \
      export PLUGIN_TAGS="x"; unset PLUGIN_TAGS_FILE; validate_required ) 2>/dev/null; then
     ok "8.4 all required vars set: validate_required exits 0"
 else
