@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -670,6 +671,27 @@ class TestExpandLocations(unittest.TestCase):
         result = _expand_locations({"docs": {"feat: msg"}}, "/repo", "^docs$")
         self.assertEqual(result, {})
 
+    def test_6_explicit_location_with_non_wildcard_star_suffix_skipped_by_exclude(self):
+        """
+        Checks: an explicit location that looks like a partial wildcard
+                (e.g. "plugins/*dsfsf") but does NOT end with exactly "/*"
+                is treated as a literal path and passes through the else branch.
+                If it matches the exclude regex it is skipped without UnboundLocalError.
+
+        Regression test for bug where the else branch used `subdir` (only defined
+        inside wildcard for-loops) instead of `display`, causing:
+          UnboundLocalError: cannot access local variable 'subdir'
+
+        Example:
+          Input:  {"plugins/*dsfsf": {"feat: msg"}}
+          exclude_regex = "plugins"
+          Falls into else branch (does not end with "/*").
+          "plugins/*dsfsf" matches regex → skipped via display variable (not subdir).
+          Result: {}
+        """
+        result = _expand_locations({"plugins/*dsfsf": {"feat: msg"}}, "/repo", "plugins")
+        self.assertEqual(result, {})
+
 
 # ---------------------------------------------------------------------------
 # Class 4 — TestRelease
@@ -691,14 +713,22 @@ class TestRelease(unittest.TestCase):
         calls release() and returns the mock for run_command.
         changelog_level defaults to "1" (required by release()).
         Pass "" to simulate the variable being unset.
+
+        PLUGIN_MESSAGE_FILE: release() reads the PR body from a file, not an
+        env var. We write the message to a real temp file and point
+        PLUGIN_MESSAGE_FILE at it so release() can open it normally.
         """
         mock_result = MagicMock()
         mock_result.returncode = cliff_returncode
         mock_result.stdout = cliff_stdout
         mock_result.stderr = cliff_stderr
 
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write(message)
+            tmp_path = f.name
+
         env = {
-            "PLUGIN_MESSAGE":             message,
+            "PLUGIN_MESSAGE_FILE":        tmp_path,
             "PLUGIN_BASE":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": exclude_regex,
             "PLUGIN_OUTPUT_TAGS_FILE":    output_tags_file,
@@ -706,14 +736,16 @@ class TestRelease(unittest.TestCase):
             "PLUGIN_CHANGELOG_LEVEL":     changelog_level,
         }
 
-        cliff_toml = os.path.join(os.path.dirname(_src_path), "cliff.toml")
+        try:
+            with patch.dict(os.environ, env, clear=False), \
+                 patch("os.path.exists", return_value=True), \
+                 patch("os.path.isdir", side_effect=lambda p: any(p.endswith(d) for d in dirs_exist)), \
+                 patch("os.listdir", return_value=list(list_dirs)), \
+                 patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+                release()
+        finally:
+            os.unlink(tmp_path)
 
-        with patch.dict(os.environ, env, clear=False), \
-             patch("os.path.exists", return_value=True), \
-             patch("os.path.isdir", side_effect=lambda p: any(p.endswith(d) for d in dirs_exist)), \
-             patch("os.listdir", return_value=list(list_dirs)), \
-             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
-            release()
         return mock_cmd
 
     def test_1_single_component_first_release(self):
@@ -969,7 +1001,9 @@ class TestChangelogLevel(unittest.TestCase):
         mock_result.stderr = ""
 
         env = {
-            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            # PLUGIN_MESSAGE_FILE is not reached — release() exits before it
+            # when PLUGIN_CHANGELOG_LEVEL is unset.
+            "PLUGIN_MESSAGE_FILE":        "dummy.txt",
             "PLUGIN_BASE":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
@@ -1002,7 +1036,9 @@ class TestChangelogLevel(unittest.TestCase):
         mock_result.stderr = ""
 
         env = {
-            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            # PLUGIN_MESSAGE_FILE is not reached — release() exits before it
+            # when PLUGIN_CHANGELOG_LEVEL is non-integer.
+            "PLUGIN_MESSAGE_FILE":        "dummy.txt",
             "PLUGIN_BASE":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
@@ -1047,8 +1083,12 @@ class TestCliffTomlResolution(unittest.TestCase):
                 return workspace_has_cliff
             return True  # everything else (dirs, changelog, etc.) exists
 
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("feat[nati]: add login")
+            tmp_path = f.name
+
         env = {
-            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "PLUGIN_MESSAGE_FILE":        tmp_path,
             "PLUGIN_BASE":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
@@ -1060,13 +1100,16 @@ class TestCliffTomlResolution(unittest.TestCase):
         else:
             env.pop("PLUGIN_CLIFF_TOML", None)
 
-        with patch.dict(os.environ, env, clear=False), \
-             patch("os.path.exists", side_effect=fake_exists), \
-             patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
-             patch("os.listdir", return_value=[]), \
-             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
-             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
-            release()
+        try:
+            with patch.dict(os.environ, env, clear=False), \
+                 patch("os.path.exists", side_effect=fake_exists), \
+                 patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
+                 patch("os.listdir", return_value=[]), \
+                 patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
+                 patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+                release()
+        finally:
+            os.unlink(tmp_path)
 
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
         # extract the --config <path> value from the recorded calls

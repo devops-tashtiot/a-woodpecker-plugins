@@ -58,7 +58,7 @@ def _known_commit_types(parsers):
     These ARE the known commit types — no extraction, no transformation.
 
     Examples (given the default cliff.toml):
-      {"^breaking\\((.*)\\)", "^breaking", "^feat\\((.*)\\)", "^feat", ...}
+      {"^breaking", "^feat", ...}
     """
     types = set()
     for p in parsers:
@@ -70,7 +70,7 @@ def _known_commit_types(parsers):
 
 def parse_pr_body(body, parsers=None, changelog_level=None):
     """
-    Parses PR body lines matching: type(scope)[loc1, loc2]!: description
+    Parses PR body lines matching: type[loc1, loc2]!: description
 
     Returns dict[location -> set[commit_str]] where:
       - location is a path string:
@@ -78,8 +78,7 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
           "nati"      -> nati/ (tag nati-v1.0.0)
           "base/argo" -> base/argo/ (tag base-argo-v1.0.0)
       - commit_str is the line with [locations] removed — passed as-is to git-cliff.
-          git-cliff (filter_unconventional = true) validates bang/colon/description.
-          feat(auth)[nati]!: add login  ->  feat(auth)!: add login
+          feat[nati]!: add login  ->  feat!: add login
           feat[nati]: add login          ->  feat: add login
 
     changelog_level (int | None):
