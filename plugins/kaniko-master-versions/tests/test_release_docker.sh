@@ -26,7 +26,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_SH="${SCRIPT_DIR}/plugin.sh"
+PLUGIN_SH="${SCRIPT_DIR}/../plugin.sh"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mock Dockerfile base image.

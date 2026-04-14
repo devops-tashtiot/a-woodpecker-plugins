@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 import types
 
-_src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release.py")
+_src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "release.py")
 release_module = types.ModuleType("release")
 release_module.__file__ = _src_path
 with open(_src_path) as _f:
@@ -23,10 +23,10 @@ release              = release_module.release
 # ---------------------------------------------------------------------------
 
 PARSERS = [
-    {"message": r"^breaking(\(.*?\))?", "group": "🚀 Breaking Changes", "bump_type": "major", "skip": False},
-    {"message": r"^feat(\(.*?\))?",     "group": "✨ Features",          "bump_type": "minor", "skip": False},
-    {"message": r"^fix(\(.*?\))?",      "group": "🐛 Bug Fixes",         "bump_type": "patch", "skip": False},
-    {"message": r"^other(\(.*?\))?",    "group": "",                     "bump_type": "",       "skip": True},
+    {"message": r"^breaking", "group": "🚀 🚀 Breaking Changes", "bump_type": "", "skip": False},
+    {"message": r"^feat",     "group": "✨ Features",             "bump_type": "", "skip": False},
+    {"message": r"^fix",      "group": "🐛 Bug Fixes",            "bump_type": "", "skip": False},
+    {"message": r"^other",    "group": "📦 other",                "bump_type": "", "skip": True},
 ]
 
 
@@ -43,24 +43,24 @@ PARSERS = [
 
 class TestParsePrBody(unittest.TestCase):
 
-    def test_1_single_component_with_scope(self):
+    def test_1_single_component(self):
         """
-        Checks: a standard line with type, scope, location, and description
+        Checks: a standard line with type, location, and description
                 produces one entry in the result dict.
 
         Example:
-          Input:  "feat(auth)[nati]: add login"
-          Parser matches "^feat\\((.*)\\" at start, finds '[' immediately after.
+          Input:  "feat[nati]: add login"
+          Parser matches "^feat" at start, finds '[' immediately after.
           Bracket content "nati" becomes the location key.
-          Brackets are stripped → commit_str = "feat(auth): add login"
-          Result: {"nati": {"feat(auth): add login"}}
+          Brackets are stripped → commit_str = "feat: add login"
+          Result: {"nati": {"feat: add login"}}
         """
-        result = parse_pr_body("feat(auth)[nati]: add login", PARSERS)
-        self.assertEqual(result, {"nati": {"feat(auth): add login"}})
+        result = parse_pr_body("feat[nati]: add login", PARSERS)
+        self.assertEqual(result, {"nati": {"feat: add login"}})
 
     def test_2_no_scope(self):
         """
-        Checks: type without scope — the scopeless parser pattern (^feat) matches,
+        Checks: type without scope — the parser pattern (^feat) matches,
                 bracket immediately follows, location and description work normally.
 
         Example:
@@ -78,15 +78,15 @@ class TestParsePrBody(unittest.TestCase):
                 each carrying the same commit string.
 
         Example:
-          Input:  "feat(auth)[nati, check]: msg"
+          Input:  "feat[nati, check]: msg"
           Locations = ["nati", "check"] (spaces stripped)
-          commit_str = "feat(auth): msg"
-          Result: {"nati": {"feat(auth): msg"}, "check": {"feat(auth): msg"}}
+          commit_str = "feat: msg"
+          Result: {"nati": {"feat: msg"}, "check": {"feat: msg"}}
         """
-        result = parse_pr_body("feat(auth)[nati, check]: msg", PARSERS)
+        result = parse_pr_body("feat[nati, check]: msg", PARSERS)
         self.assertEqual(result, {
-            "nati":  {"feat(auth): msg"},
-            "check": {"feat(auth): msg"},
+            "nati":  {"feat: msg"},
+            "check": {"feat: msg"},
         })
 
     def test_4_root_location(self):
@@ -94,13 +94,13 @@ class TestParsePrBody(unittest.TestCase):
         Checks: empty brackets [] mean the repo root — the location key is "".
 
         Example:
-          Input:  "feat(auth)[]: add login"
+          Input:  "feat[]: add login"
           Bracket content = "" → location = ""  (root)
-          commit_str = "feat(auth): add login"
-          Result: {"": {"feat(auth): add login"}}
+          commit_str = "feat: add login"
+          Result: {"": {"feat: add login"}}
         """
-        result = parse_pr_body("feat(auth)[]: add login", PARSERS)
-        self.assertEqual(result, {"": {"feat(auth): add login"}})
+        result = parse_pr_body("feat[]: add login", PARSERS)
+        self.assertEqual(result, {"": {"feat: add login"}})
 
     def test_5_bang_preserved(self):
         """
@@ -108,13 +108,13 @@ class TestParsePrBody(unittest.TestCase):
                 commit string — it is NOT part of the location brackets.
 
         Example:
-          Input:  "feat(auth)[nati]!: add login"
+          Input:  "feat[nati]!: add login"
           Brackets stripped: "[nati]" removed.
-          Remaining line: "feat(auth)!: add login"  ← bang is still there
-          Result: {"nati": {"feat(auth)!: add login"}}
+          Remaining line: "feat!: add login"  ← bang is still there
+          Result: {"nati": {"feat!: add login"}}
         """
-        result = parse_pr_body("feat(auth)[nati]!: add login", PARSERS)
-        self.assertEqual(result, {"nati": {"feat(auth)!: add login"}})
+        result = parse_pr_body("feat[nati]!: add login", PARSERS)
+        self.assertEqual(result, {"nati": {"feat!: add login"}})
 
     def test_6_uppercase_type_not_matched(self):
         """
@@ -122,11 +122,11 @@ class TestParsePrBody(unittest.TestCase):
                 lowercase anchors (^feat, ^fix, ...) and re.match is case-sensitive.
 
         Example:
-          Input:  "FEAT(auth)[nati]: add login"
+          Input:  "FEAT[nati]: add login"
           "^feat" does NOT match "FEAT..." → no parser matches → line skipped.
           Result: {}
         """
-        result = parse_pr_body("FEAT(auth)[nati]: add login", PARSERS)
+        result = parse_pr_body("FEAT[nati]: add login", PARSERS)
         self.assertEqual(result, {})
 
     def test_7_leading_space_not_matched(self):
@@ -137,11 +137,11 @@ class TestParsePrBody(unittest.TestCase):
                 Per README: type must start at the very beginning of the line.
 
         Example:
-          Input: "  feat(auth)[nati]: add login"  (two leading spaces)
+          Input: "  feat[nati]: add login"  (two leading spaces)
           re.match("^feat", "  feat...") → None  → line silently ignored.
           Result: {}
         """
-        result = parse_pr_body("  feat(auth)[nati]: add login", PARSERS)
+        result = parse_pr_body("  feat[nati]: add login", PARSERS)
         self.assertEqual(result, {})
 
     def test_8_unknown_type_not_matched(self):
@@ -150,11 +150,11 @@ class TestParsePrBody(unittest.TestCase):
                 git-cliff would filter it anyway (filter_unconventional=true).
 
         Example:
-          Input:  "chore(auth)[nati]: bump deps"
+          Input:  "chore[nati]: bump deps"
           "chore" matches no parser pattern → line skipped.
           Result: {}
         """
-        result = parse_pr_body("chore(auth)[nati]: bump deps", PARSERS)
+        result = parse_pr_body("chore[nati]: bump deps", PARSERS)
         self.assertEqual(result, {})
 
     def test_9_wildcard_location_literal(self):
@@ -164,13 +164,13 @@ class TestParsePrBody(unittest.TestCase):
                 _expand_locations — parse_pr_body itself does NOT expand it.
 
         Example:
-          Input:  "feat(auth)[*]: upgrade all"
+          Input:  "feat[*]: upgrade all"
           Location key = "*"  (literal string, not expanded here)
-          commit_str = "feat(auth): upgrade all"
-          Result: {"*": {"feat(auth): upgrade all"}}
+          commit_str = "feat: upgrade all"
+          Result: {"*": {"feat: upgrade all"}}
         """
-        result = parse_pr_body("feat(auth)[*]: upgrade all", PARSERS)
-        self.assertEqual(result, {"*": {"feat(auth): upgrade all"}})
+        result = parse_pr_body("feat[*]: upgrade all", PARSERS)
+        self.assertEqual(result, {"*": {"feat: upgrade all"}})
 
     def test_10_empty_body(self):
         """
@@ -190,10 +190,10 @@ class TestParsePrBody(unittest.TestCase):
 
         Example:
           parsers = []
-          Input:  "feat(auth)[nati]: add login"
+          Input:  "feat[nati]: add login"
           Output: {} (error printed to stdout)
         """
-        result = parse_pr_body("feat(auth)[nati]: add login", [])
+        result = parse_pr_body("feat[nati]: add login", [])
         self.assertEqual(result, {})
 
     def test_12_multi_line_description(self):
@@ -205,28 +205,28 @@ class TestParsePrBody(unittest.TestCase):
 
         Example:
           Input:
-            "feat(auth)[nati]:"
+            "feat[nati]:"
             "  Replace basic auth with OAuth2."
             "  Supports Google and GitHub."
             ""
-            "fix(bug)[check]: unrelated fix"
+            "fix[check]: unrelated fix"
 
-          "feat(auth)[nati]:" → commit_str = "feat(auth):"
+          "feat[nati]:" → commit_str = "feat:"
           Continuation lines collected until next commit header: ["  Replace basic auth with OAuth2.", "  Supports Google and GitHub.", ""]
-          Final commit_str = "feat(auth):   Replace basic auth with OAuth2.\n  Supports Google and GitHub.\n"
-          "fix(bug)[check]: unrelated fix" → separate entry.
+          Final commit_str = "feat:   Replace basic auth with OAuth2.\n  Supports Google and GitHub.\n"
+          "fix[check]: unrelated fix" → separate entry.
 
           Result: {
             "nati":  {commit containing "Replace basic auth with OAuth2."},
-            "check": {"fix(bug): unrelated fix"},
+            "check": {"fix: unrelated fix"},
           }
         """
         body = (
-            "feat(auth)[nati]:\n"
+            "feat[nati]:\n"
             "  Replace basic auth with OAuth2.\n"
             "  Supports Google and GitHub.\n"
             "\n"
-            "fix(bug)[check]: unrelated fix"
+            "fix[check]: unrelated fix"
         )
         result = parse_pr_body(body, PARSERS)
         self.assertIn("nati", result)
@@ -235,7 +235,7 @@ class TestParsePrBody(unittest.TestCase):
         # Continuation lines are stored raw (no strip) — leading spaces preserved
         self.assertIn("  Replace basic auth with OAuth2.", nati_commit)
         self.assertIn("  Supports Google and GitHub.", nati_commit)
-        self.assertEqual(result["check"], {"fix(bug): unrelated fix"})
+        self.assertEqual(result["check"], {"fix: unrelated fix"})
 
     def test_13_multiple_components_multiple_lines(self):
         """
@@ -244,24 +244,24 @@ class TestParsePrBody(unittest.TestCase):
 
         Example:
           Input:
-            "feat(auth)[nati]: add login"
-            "fix(timeout)[check]: fix socket"
+            "feat[nati]: add login"
+            "fix[check]: fix socket"
 
           Result: {
-            "nati":  {"feat(auth): add login"},
-            "check": {"fix(timeout): fix socket"},
+            "nati":  {"feat: add login"},
+            "check": {"fix: fix socket"},
           }
         """
-        body = "feat(auth)[nati]: add login\nfix(timeout)[check]: fix socket"
+        body = "feat[nati]: add login\nfix[check]: fix socket"
         result = parse_pr_body(body, PARSERS)
         self.assertEqual(result, {
-            "nati":  {"feat(auth): add login"},
-            "check": {"fix(timeout): fix socket"},
+            "nati":  {"feat: add login"},
+            "check": {"fix: fix socket"},
         })
 
     def test_14_no_scope_bang_multiple_locations(self):
         """
-        Checks: scopeless type + bang + multiple comma-separated locations all
+        Checks: type + bang + multiple comma-separated locations all
                 work together — each location gets the same commit_str (with bang).
 
         Example:
@@ -291,25 +291,25 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 as description text rather than being treated as a new commit.
 
         Example:
-          "feat(auth)[nati]:"                         ← empty description → continuation mode
+          "feat[nati]:"                               ← empty description → continuation mode
           "feat[nati: this has no closing bracket"    ← _match_line returns None → continuation text
-          "fix(bug)[check]: stops continuation"       ← valid → stops collection
+          "fix[check]: stops continuation"            ← valid → stops collection
 
           Result:
             "nati"  → commit contains "feat[nati: this has no closing bracket"
-            "check" → {"fix(bug): stops continuation"}
+            "check" → {"fix: stops continuation"}
         """
         body = (
-            "feat(auth)[nati]:\n"
+            "feat[nati]:\n"
             "feat[nati: this has no closing bracket\n"
-            "fix(bug)[check]: stops continuation"
+            "fix[check]: stops continuation"
         )
         result = parse_pr_body(body, PARSERS)
         self.assertIn("nati", result)
         self.assertIn("check", result)
         nati_commit = next(iter(result["nati"]))
         self.assertIn("feat[nati: this has no closing bracket", nati_commit)
-        self.assertEqual(result["check"], {"fix(bug): stops continuation"})
+        self.assertEqual(result["check"], {"fix: stops continuation"})
 
     def test_B_same_location_two_lines_both_in_set(self):
         """
@@ -317,14 +317,14 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 in the set — they are NOT deduplicated because they are different strings.
 
         Example:
-          "feat(auth)[nati]: add login"
-          "fix(bug)[nati]: fix crash"
+          "feat[nati]: add login"
+          "fix[nati]: fix crash"
 
-          Result: {"nati": {"feat(auth): add login", "fix(bug): fix crash"}}
+          Result: {"nati": {"feat: add login", "fix: fix crash"}}
         """
-        body = "feat(auth)[nati]: add login\nfix(bug)[nati]: fix crash"
+        body = "feat[nati]: add login\nfix[nati]: fix crash"
         result = parse_pr_body(body, PARSERS)
-        self.assertEqual(result, {"nati": {"feat(auth): add login", "fix(bug): fix crash"}})
+        self.assertEqual(result, {"nati": {"feat: add login", "fix: fix crash"}})
 
     def test_C_other_type_skip_still_routed(self):
         """
@@ -333,12 +333,12 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 is routed to the location. git-cliff will later skip it — not parse_pr_body.
 
         Example:
-          "other(scope)[nati]: some no-op"
-          "other" pattern matches → commit_str = "other(scope): some no-op"
-          Result: {"nati": {"other(scope): some no-op"}}
+          "other[nati]: some no-op"
+          "other" pattern matches → commit_str = "other: some no-op"
+          Result: {"nati": {"other: some no-op"}}
         """
-        result = parse_pr_body("other(scope)[nati]: some no-op", PARSERS)
-        self.assertEqual(result, {"nati": {"other(scope): some no-op"}})
+        result = parse_pr_body("other[nati]: some no-op", PARSERS)
+        self.assertEqual(result, {"nati": {"other: some no-op"}})
 
     def test_D_duplicate_line_deduplicated_by_set(self):
         """
@@ -346,14 +346,14 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 in the set — Python sets automatically deduplicate identical strings.
 
         Example:
-          "feat(auth)[nati]: add login"   ← first occurrence
-          "feat(auth)[nati]: add login"   ← identical duplicate
+          "feat[nati]: add login"   ← first occurrence
+          "feat[nati]: add login"   ← identical duplicate
 
-          Result: {"nati": {"feat(auth): add login"}}  (one entry, not two)
+          Result: {"nati": {"feat: add login"}}  (one entry, not two)
         """
-        body = "feat(auth)[nati]: add login\nfeat(auth)[nati]: add login"
+        body = "feat[nati]: add login\nfeat[nati]: add login"
         result = parse_pr_body(body, PARSERS)
-        self.assertEqual(result, {"nati": {"feat(auth): add login"}})
+        self.assertEqual(result, {"nati": {"feat: add login"}})
 
     def test_E_location_with_slash(self):
         """
@@ -361,12 +361,12 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 Slug conversion (slash → hyphen) happens later in release(), not here.
 
         Example:
-          "feat(auth)[plugins/docker]: add registry support"
+          "feat[plugins/docker]: add registry support"
           Location key = "plugins/docker"  (slash preserved)
-          Result: {"plugins/docker": {"feat(auth): add registry support"}}
+          Result: {"plugins/docker": {"feat: add registry support"}}
         """
-        result = parse_pr_body("feat(auth)[plugins/docker]: add registry support", PARSERS)
-        self.assertEqual(result, {"plugins/docker": {"feat(auth): add registry support"}})
+        result = parse_pr_body("feat[plugins/docker]: add registry support", PARSERS)
+        self.assertEqual(result, {"plugins/docker": {"feat: add registry support"}})
 
     def test_F_spaces_around_locations_stripped(self):
         """
@@ -374,20 +374,20 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 via loc.strip(), producing clean location keys.
 
         Example:
-          "feat(auth)[nati,  check  ,  base/argo ]: msg"
+          "feat[nati,  check  ,  base/argo ]: msg"
           raw_locs = "nati,  check  ,  base/argo "
           After split + strip: ["nati", "check", "base/argo"]
           Result: {
-            "nati":     {"feat(auth): msg"},
-            "check":    {"feat(auth): msg"},
-            "base/argo":{"feat(auth): msg"},
+            "nati":     {"feat: msg"},
+            "check":    {"feat: msg"},
+            "base/argo":{"feat: msg"},
           }
         """
-        result = parse_pr_body("feat(auth)[nati,  check  ,  base/argo ]: msg", PARSERS)
+        result = parse_pr_body("feat[nati,  check  ,  base/argo ]: msg", PARSERS)
         self.assertEqual(result, {
-            "nati":      {"feat(auth): msg"},
-            "check":     {"feat(auth): msg"},
-            "base/argo": {"feat(auth): msg"},
+            "nati":      {"feat: msg"},
+            "check":     {"feat: msg"},
+            "base/argo": {"feat: msg"},
         })
 
     def test_G_parser_with_empty_message_skipped(self):
@@ -412,26 +412,26 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 until the next commit header (always, regardless of description).
 
         Example:
-          "feat(auth)[nati]!:"                       ← empty description after bracket removal
+          "feat[nati]!:"                             ← empty description after bracket removal
           "  Big breaking change description."        ← continuation line (raw, spaces preserved)
-          "fix(bug)[check]: stops it"                ← stops continuation
+          "fix[check]: stops it"                     ← stops continuation
 
-          commit_str after join: "feat(auth)!:   Big breaking change description."
+          commit_str after join: "feat!:   Big breaking change description."
           Result:
             "nati"  → commit contains "Big breaking change description."
-            "check" → {"fix(bug): stops it"}
+            "check" → {"fix: stops it"}
         """
         body = (
-            "feat(auth)[nati]!:\n"
+            "feat[nati]!:\n"
             "  Big breaking change description.\n"
-            "fix(bug)[check]: stops it"
+            "fix[check]: stops it"
         )
         result = parse_pr_body(body, PARSERS)
         self.assertIn("nati", result)
         nati_commit = next(iter(result["nati"]))
         self.assertIn("  Big breaking change description.", nati_commit)
-        self.assertIn("feat(auth)!:", nati_commit)
-        self.assertEqual(result["check"], {"fix(bug): stops it"})
+        self.assertIn("feat!:", nati_commit)
+        self.assertEqual(result["check"], {"fix: stops it"})
 
     def test_I_trailing_comma_adds_root(self):
         """
@@ -439,16 +439,16 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 split + strip, which is treated as the repo root location ("").
 
         Example:
-          "feat(auth)[nati, ]: msg"
+          "feat[nati, ]: msg"
           raw_locs = "nati, "
           split(",") → ["nati", " "]
           strip each → ["nati", ""]   ← "" = root
-          Result: {"nati": {"feat(auth): msg"}, "": {"feat(auth): msg"}}
+          Result: {"nati": {"feat: msg"}, "": {"feat: msg"}}
         """
-        result = parse_pr_body("feat(auth)[nati, ]: msg", PARSERS)
+        result = parse_pr_body("feat[nati, ]: msg", PARSERS)
         self.assertEqual(result, {
-            "nati": {"feat(auth): msg"},
-            "":     {"feat(auth): msg"},
+            "nati": {"feat: msg"},
+            "":     {"feat: msg"},
         })
 
     def test_L_nested_bracket_in_content_becomes_continuation(self):
@@ -459,28 +459,28 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 collected as description text, NOT treated as a new commit.
 
         Example:
-          "feat(auth)[nati]:"              ← empty description → continuation mode
+          "feat[nati]:"              ← empty description → continuation mode
           "feat[na[ti]: malformed line"    ← bracket_re fails → becomes continuation text
-          "fix(bug)[check]: stops it"      ← valid commit → stops continuation
+          "fix[check]: stops it"     ← valid commit → stops continuation
 
           Result:
             "nati"  → commit contains "feat[na[ti]: malformed line"
-            "check" → {"fix(bug): stops it"}
+            "check" → {"fix: stops it"}
         """
         body = (
-            "feat(auth)[nati]:\n"
+            "feat[nati]:\n"
             "feat[na[ti]: malformed line\n"
-            "fix(bug)[check]: stops it"
+            "fix[check]: stops it"
         )
         result = parse_pr_body(body, PARSERS)
         self.assertIn("nati", result)
         nati_commit = next(iter(result["nati"]))
         self.assertIn("feat[na[ti]: malformed line", nati_commit)
-        self.assertEqual(result["check"], {"fix(bug): stops it"})
+        self.assertEqual(result["check"], {"fix: stops it"})
 
     def test_M_breaking_without_scope(self):
         """
-        Checks: the scopeless "^breaking" parser entry works correctly —
+        Checks: the "^breaking" parser entry works correctly —
                 type immediately followed by brackets, no parentheses needed.
 
         Example:
@@ -500,25 +500,25 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 are appended to the commit string, not silently ignored.
 
         Example:
-          "other(scope)[nati]: no-op marker"   ← has description, NOT bare ':'
-          "some extra prose"                    ← not a commit → continuation
-          "fix(bug)[check]: stops it"           ← commit header → stops collection
+          "other[nati]: no-op marker"   ← has description, NOT bare ':'
+          "some extra prose"            ← not a commit → continuation
+          "fix[check]: stops it"        ← commit header → stops collection
 
           Result:
-            "nati"  → commit contains both "other(scope): no-op marker" and "some extra prose"
-            "check" → {"fix(bug): stops it"}
+            "nati"  → commit contains both "other: no-op marker" and "some extra prose"
+            "check" → {"fix: stops it"}
         """
         body = (
-            "other(scope)[nati]: no-op marker\n"
+            "other[nati]: no-op marker\n"
             "some extra prose\n"
-            "fix(bug)[check]: stops it\n"
+            "fix[check]: stops it\n"
         )
         result = parse_pr_body(body, PARSERS)
         self.assertIn("nati", result)
         nati_commit = next(iter(result["nati"]))
-        self.assertIn("other(scope): no-op marker", nati_commit)
+        self.assertIn("other: no-op marker", nati_commit)
         self.assertIn("some extra prose", nati_commit)
-        self.assertEqual(result["check"], {"fix(bug): stops it"})
+        self.assertEqual(result["check"], {"fix: stops it"})
 
     def test_J_spaces_only_bracket_is_root(self):
         """
@@ -526,14 +526,14 @@ class TestParsePrBodyEdgeCases(unittest.TestCase):
                 identical in behaviour to empty brackets [].
 
         Example:
-          "feat(auth)[   ]: msg"
+          "feat[   ]: msg"
           raw_locs = "   "
           split(",") → ["   "]
           strip → [""]   ← root
-          Result: {"": {"feat(auth): msg"}}
+          Result: {"": {"feat: msg"}}
         """
-        result = parse_pr_body("feat(auth)[   ]: msg", PARSERS)
-        self.assertEqual(result, {"": {"feat(auth): msg"}})
+        result = parse_pr_body("feat[   ]: msg", PARSERS)
+        self.assertEqual(result, {"": {"feat: msg"}})
 
 
 # ---------------------------------------------------------------------------
@@ -550,12 +550,12 @@ class TestKnownCommitTypes(unittest.TestCase):
 
     def test_1_returns_all_raw_patterns(self):
         """
-        Checks: all 8 message patterns from PARSERS are returned as-is.
+        Checks: all 4 message patterns from PARSERS are returned as-is.
 
         Example:
-          PARSERS has 8 entries. Each has a "message" key.
-          Result must contain exactly those 8 strings, unchanged.
-          e.g. "^feat\\((.*)\\" is in the result — not "feat".
+          PARSERS has 4 entries. Each has a "message" key.
+          Result must contain exactly those 4 strings, unchanged.
+          e.g. "^feat" is in the result — not "feat".
         """
         result = _known_commit_types(PARSERS)
         expected = {p["message"] for p in PARSERS}
@@ -741,6 +741,7 @@ class TestRelease(unittest.TestCase):
                  patch("os.path.exists", return_value=True), \
                  patch("os.path.isdir", side_effect=lambda p: any(p.endswith(d) for d in dirs_exist)), \
                  patch("os.listdir", return_value=list(list_dirs)), \
+                 patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
                  patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
                 release()
         finally:
@@ -750,17 +751,17 @@ class TestRelease(unittest.TestCase):
 
     def test_1_single_component_first_release(self):
         """
-        Checks: a single component with no existing tag triggers two git-cliff
+        Checks: a single component with no existing tag triggers git-cliff
                 calls — one for --bump --bumped-version, one to generate the
-                changelog — and the include-path flag names the correct component.
+                changelog — and the tag-pattern flag names the correct component.
 
         Example:
-          PLUGIN_MESSAGE = "feat(auth)[nati]: add login"
+          PLUGIN_MESSAGE = "feat[nati]: add login"
           PLUGIN_BASE_PATH    = "/repo"
           No existing tags (run_command for git tag returns empty stdout).
           git cliff --bump --bumped-version → "nati-1.0.0"  (first release)
           git cliff --tag 'nati-1.0.0' --output ... → writes CHANGELOG.md
-          run_command called twice: once for tag-list, once for bump, once for changelog = 3 calls.
+          run_command called: once for tag-list, once for bump, once for changelog = 3 calls.
         """
         mock_cmd = self._run(
             "feat[nati]: add login",
@@ -778,11 +779,10 @@ class TestRelease(unittest.TestCase):
                 is skipped and no git-cliff call is made for it.
 
         Example:
-          PLUGIN_MESSAGE = "feat(auth)[ghost]: add login"
+          PLUGIN_MESSAGE = "feat[ghost]: add login"
           /repo/ghost does NOT exist (isdir returns False for it)
-          run_command is called only for git tag -l (to check existing tags)
-          → or not called at all if early-exit happens before the tag check.
           The cliff command is definitely not called.
+          Result: {}
         """
         mock_cmd = self._run(
             "feat[ghost]: add login",
@@ -811,7 +811,7 @@ class TestRelease(unittest.TestCase):
                 (it continues to the next component or exits gracefully).
 
         Example:
-          PLUGIN_MESSAGE = "feat(auth)[nati]: add login"
+          PLUGIN_MESSAGE = "feat[nati]: add login"
           git cliff changelog returncode = 1, stderr = "some error"
           release() prints ">>> ERROR generating changelog..." and continues.
           No exception is raised.

@@ -554,23 +554,17 @@ def release():
             print(f">>> ERROR generating changelog for {display_name}: {res.stderr.strip()}")
             continue
 
-        # ── STEP 4: CREATE TAG AND RECORD ────────────────────────────────────
-        tag_result = run_command(f"git tag -f {shlex.quote(new_tag)}")
-        if tag_result.returncode != 0:
-            print(f">>> ERROR creating tag '{new_tag}': {tag_result.stderr.strip()}")
-            continue
-        print(f">>> [INFO] Tag '{new_tag}' created locally")
-
         created_tags.append(new_tag)
-        if output_tags_file:
-            with open(output_tags_file, "a") as f:
-                f.write(f"{new_tag}\n")
-            print(f">>> [INFO] Tag '{new_tag}' written to '{output_tags_file}'")
-
 
     if created_tags:
+        # ── STEP 4: RECORD TAGS ───────────────────────────────────────────────
+        for tag in created_tags:
+            if output_tags_file:
+                with open(output_tags_file, "a") as f:
+                    f.write(f"{tag}\n")
+                print(f">>> [INFO] Tag '{tag}' written to '{output_tags_file}'")
         print("")
-        print("\033[1;34m>>> New tags created:\033[0m")
+        print("\033[1;34m>>> Tags to be created by pipeline:\033[0m")
         for tag in created_tags:
             print(f"\033[1;34m    {tag}\033[0m")
     else:

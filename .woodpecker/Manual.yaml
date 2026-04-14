@@ -41,6 +41,24 @@ steps:
         print(">>> PR Body:\n" + body)
         EOF
 
+  - name: Test changed plugins
+    image: netanelzucaim123/python-git-cliff:latest
+    privileged: true
+    commands:
+      - git diff --name-only HEAD~1 HEAD | grep '^plugins/' | cut -d'/' -f1-2 | sort -u > changed_dirs.txt
+      - |
+        while IFS= read -r dir; do
+          [ -d "$dir/tests" ] || continue
+          for f in "$dir/tests/"*.py "$dir/tests/"*.sh; do
+            [ -f "$f" ] || continue
+            echo ">>> Running $f"
+            case "$f" in
+              *.py) python3 "$f" || exit 1 ;;
+              *.sh) sh "$f"      || exit 1 ;;
+            esac
+          done
+        done < changed_dirs.txt
+
   - name: Run release
     image: netanelzucaim123/master-versions:latest
     environment:
@@ -91,6 +109,7 @@ steps:
         else
           echo "No changelog changes to commit."
         fi
+      - for tag in $(cat new_tags.txt); do git tag -f "$tag"; done
       - git push --force --tags origin
 
   - name: Build and push plugin images

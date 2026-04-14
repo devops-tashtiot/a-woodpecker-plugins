@@ -16,8 +16,8 @@ import os
 import unittest
 import types
 
-_src_path   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release.py")
-_cliff_toml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cliff.toml")
+_src_path   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "release.py")
+_cliff_toml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cliff.toml")
 
 release_module = types.ModuleType("release")
 with open(_src_path) as _f:
@@ -298,8 +298,8 @@ class TestRealPrBody(unittest.TestCase):
         Checks: changelog_level enforcement works correctly when using the real
                 cliff.toml parsers — not the inline fixture.
 
-        Why this matters: the inline PARSERS fixture uses different pattern strings
-        (e.g. r"^feat(\(.*?\))?") while cliff.toml uses bare patterns (e.g. "^feat").
+        Why this matters: this test confirms level enforcement works correctly with
+        the real cliff.toml bare patterns (e.g. "^feat", "^fix").
         This test confirms level enforcement is independent of which patterns are
         loaded and that the real cliff.toml patterns still produce correct routing
         after the level filter is applied.

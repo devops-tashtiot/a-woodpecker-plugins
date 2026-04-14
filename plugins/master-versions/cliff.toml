@@ -18,7 +18,7 @@ custom_major_increment_regex = "^breaking"
 trim = false
 body = """
 {% if version %}\
-    ## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
+    ## [{{ version }}]({{ get_env(name="CI_REPO_URL", default="") }}/browse?refs={{ version }}) - {{ timestamp | date(format="%Y-%m-%d %H:%M") }}
 
 {% else %}\
     ## [unreleased]
