@@ -56,7 +56,7 @@ class TestParsePrBody(unittest.TestCase):
           Result: {"nati": {"feat: add login"}}
         """
         result = parse_pr_body("feat[nati]: add login", PARSERS)
-        self.assertEqual(result, {"nati": {"feat: WRONG_EXPECTED"}})
+        self.assertEqual(result, {"nati": {"feat: add login"}})
 
     def test_2_no_scope(self):
         """
