@@ -51,14 +51,11 @@ steps:
           [ -d "$dir/tests" ] || continue
           for f in "$dir/tests/"*.py "$dir/tests/"*.sh; do
             [ -f "$f" ] || continue
-            echo "\033[1m========================================\033[0m"
-            echo "\033[1m>>> RUNNING TEST: $f\033[0m"
-            echo "\033[1m========================================\033[0m"
+            echo ">>> Running $f"
             case "$f" in
-              *.py) python3 "$f" || { echo "\033[1;31m>>> FAILED: $f\033[0m"; exit 1; } ;;
-              *.sh) sh "$f"      || { echo "\033[1;31m>>> FAILED: $f\033[0m"; exit 1; } ;;
+              *.py) python3 "$f" || exit 1 ;;
+              *.sh) sh "$f"      || exit 1 ;;
             esac
-            echo "\033[1;32m>>> PASSED: $f\033[0m"
           done
         done < changed_dirs.txt
 
