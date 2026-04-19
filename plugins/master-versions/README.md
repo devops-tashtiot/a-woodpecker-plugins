@@ -2,6 +2,28 @@
 
 Woodpecker CI plugin that parses a PR description, calculates semantic versions via git-cliff, writes `CHANGELOG.md` files per component, and records created tags for downstream steps.
 
+### What is a CHANGELOG.md?
+
+A `CHANGELOG.md` is a file that lives inside each component's directory and tracks every release of that component in a human-readable format. Every time a component is released, a new entry is prepended to its `CHANGELOG.md` containing the version, the date, and the commit messages that triggered the release.
+
+```
+## [nati-1.2.0] - 2024-03-15 14:30
+
+### ✨ Features
+* add OAuth2 login support
+
+---
+
+## [nati-1.1.0] - 2024-02-10 09:00
+
+### 🐛 Bug Fixes
+* resolve socket timeout on large uploads
+```
+
+This file is committed to the repository so the full release history is always visible in source control — no external service needed.
+
+In a monorepo, each component has its own independent `CHANGELOG.md` and its own version — `nati/CHANGELOG.md`, `plugins/docker/CHANGELOG.md`, `base/argo/CHANGELOG.md`, and so on. Releasing one component never affects the version or changelog of another. Managing all of this manually across many components is error-prone and tedious. This plugin automates it: one PR description drives all the releases, each component gets its own entry, and nothing is touched unless you explicitly named it.
+
 ---
 
 ## Contents
