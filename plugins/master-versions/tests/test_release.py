@@ -1011,10 +1011,12 @@ class TestChangelogLevel(unittest.TestCase):
             "PLUGIN_CHANGELOG_LEVEL":     "",   # empty → falsy → triggers required-var error
         }
         with patch.dict(os.environ, env, clear=False), \
-             patch("os.path.exists", return_value=True), \
-             patch("os.path.isdir", return_value=True), \
-             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
-            release()
+            patch("os.path.exists", return_value=True), \
+            patch("os.path.isdir", return_value=True), \
+            patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            with self.assertRaises(SystemExit) as cm:
+              release()
+            self.assertEqual(cm.exception.code, 1)
 
         mock_cmd.assert_not_called()
 

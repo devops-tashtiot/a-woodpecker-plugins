@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); if echo \"$f\" | grep -q 'plugins/master-versions/release\\.py$'; then cd /home/netanelzucaim/devops/master-versions/semantic/plugins/master-versions && python3 test_release.py && python3 test_release_cliff.py; fi",
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); if echo \"$f\" | grep -q 'plugins/master-versions/release\\.py$'; then cd /home/netanelzucaim/devops/master-versions/semantic/plugins/master-versions && python3 tests/test_release.py && python3 tests/test_release_cliff.py; fi",
             "timeout": 60,
             "statusMessage": "Running master-versions tests..."
           },

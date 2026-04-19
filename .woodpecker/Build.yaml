@@ -69,7 +69,6 @@ steps:
       PLUGIN_BASE_PATH: "."
       SCOPE_DEPTH: "1"
     commands:
-      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
         for var in SCOPE_DEPTH PLUGIN_BASE_PATH; do
           val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
@@ -105,7 +104,6 @@ steps:
   - name: Build and push plugin images
     image: netanelzucaim123/kaniko-master-versions:latest
     commands:
-      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
         val=$(grep -m 1 "^PLUGIN_BASE_PATH=" pr_body.txt | cut -d= -f2-)
         if [ -n "$val" ]; then

@@ -5,6 +5,9 @@ clone:
       depth: 0
       tags: true
 
+depends_on:
+  - Tests
+
 when:
   - event: [manual]
 
@@ -41,24 +44,6 @@ steps:
         print(">>> PR Body:\n" + body)
         EOF
 
-  - name: Test changed plugins
-    image: netanelzucaim123/python-git-cliff:latest
-    privileged: true
-    commands:
-      - git diff --name-only HEAD~1 HEAD | grep '^plugins/' | cut -d'/' -f1-2 | sort -u > changed_dirs.txt
-      - |
-        while IFS= read -r dir; do
-          [ -d "$dir/tests" ] || continue
-          for f in "$dir/tests/"*.py "$dir/tests/"*.sh; do
-            [ -f "$f" ] || continue
-            echo ">>> Running $f"
-            case "$f" in
-              *.py) python3 "$f" || exit 1 ;;
-              *.sh) sh "$f"      || exit 1 ;;
-            esac
-          done
-        done < changed_dirs.txt
-
   - name: Run release
     image: netanelzucaim123/master-versions:latest
     environment:
@@ -87,7 +72,6 @@ steps:
       PLUGIN_BASE_PATH: "."
       SCOPE_DEPTH: "1"
     commands:
-      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
         for var in SCOPE_DEPTH PLUGIN_BASE_PATH; do
           val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
@@ -115,7 +99,6 @@ steps:
   - name: Build and push plugin images
     image: netanelzucaim123/kaniko-master-versions:latest
     commands:
-      - '[ -s new_tags.txt ] || { echo "No new tags — skipping"; exit 0; }'
       - |
         val=$(grep -m 1 "^PLUGIN_BASE_PATH=" pr_body.txt | cut -d= -f2-)
         if [ -n "$val" ]; then

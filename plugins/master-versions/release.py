@@ -2,6 +2,7 @@ import subprocess
 import re
 import os
 import shlex
+import sys
 import tomllib
 
 
@@ -345,18 +346,28 @@ def _print_location_commits(location_to_commits):
 
 def release():
     # ── Validate required env vars ────────────────────────────────────────────
+    missing = []
     if not os.getenv("PLUGIN_CHANGELOG_LEVEL"):
-        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL is required but not set.")
-        print("           This variable enforces the expected depth of component locations in your PR body.")
-        print("           It prevents accidentally releasing at the wrong level of your monorepo.")
-        print("")
-        print("           Level 0 -> root only:                  feat[][...] (empty bracket)")
-        print("           Level 1 -> top-level dirs:             feat[nati][...]")
-        print("           Level 2 -> one level nested:           feat[plugins/docker][...]")
-        print("           Level 3 -> two levels nested:          feat[base/infra/docker][...]")
-        print("")
-        print("           Example: PLUGIN_CHANGELOG_LEVEL=1")
-        return
+        missing.append(
+            "  PLUGIN_CHANGELOG_LEVEL — integer depth of component locations in your PR body.\n"
+            "    Level 0 -> root only: feat[][...]   Level 1 -> top-level: feat[nati][...]\n"
+            "    Level 2 -> nested:    feat[plugins/docker][...]   Example: PLUGIN_CHANGELOG_LEVEL=1"
+        )
+    if not os.getenv("PLUGIN_MESSAGE_FILE"):
+        missing.append(
+            "  PLUGIN_MESSAGE_FILE — path to the file containing the PR/commit message.\n"
+            "    Example: PLUGIN_MESSAGE_FILE=pr_body.txt"
+        )
+    if not os.getenv("PLUGIN_BASE_PATH"):
+        missing.append(
+            "  PLUGIN_BASE_PATH — root directory; all [location] paths are resolved relative to this.\n"
+            "    Example: PLUGIN_BASE_PATH=."
+        )
+    if missing:
+        print(">>> ERROR: Missing required environment variables:\n")
+        for m in missing:
+            print(m)
+        sys.exit(1)
 
     # ── Load env vars ─────────────────────────────────────────────────────────
     try:
@@ -365,20 +376,17 @@ def release():
         print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be a non-negative integer (e.g. 1).")
         return
 
-    message_file = os.getenv("PLUGIN_MESSAGE_FILE", "")
-    if not message_file:
-        print(">>> ERROR: PLUGIN_MESSAGE_FILE is required but not set.")
-        print("           Set it to the path of the file containing the PR/commit message.")
-        print("           Example: PLUGIN_MESSAGE_FILE=pr_body.txt")
-        return
+    message_file = os.getenv("PLUGIN_MESSAGE_FILE")
     try:
         with open(message_file) as _f:
             pr_body = _f.read()
     except OSError as e:
         print(f">>> ERROR: Cannot read PLUGIN_MESSAGE_FILE='{message_file}': {e}")
         return
-    root_path           = os.getenv("PLUGIN_BASE_PATH", ".")
+    root_path           = os.getenv("PLUGIN_BASE_PATH")
     output_tags_file    = os.getenv("PLUGIN_OUTPUT_TAGS_FILE", "")
+    if output_tags_file:
+        open(output_tags_file, "w").close()
     exclude_regex       = os.getenv("PLUGIN_SCOPE_EXCLUDE_REGEX", "")
     try:
         verbose = int(os.getenv("PLUGIN_VERBOSE", "0"))
@@ -454,7 +462,6 @@ def release():
         print("")
         print(f"\033[1;31m--- Processing: {display_name} ---\033[0m")
         print("")
-
         # Skip non-existent directories (root is always assumed to exist)
         if not is_root and not os.path.isdir(full_path):
             print(f">>> SKIP: Directory '{location}' does not exist.")
