@@ -10,6 +10,7 @@ when:
   - event: manual
   - event: push
     branch: main
+    evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'
 
 steps:
   # - name: Get changed dirs
