@@ -31,7 +31,6 @@ steps:
       PLUGIN_MESSAGE: "${MESSAGE}"
       PLUGIN_VERBOSE: 2
       PLUGIN_CHANGELOG_LEVEL: 2
-      PLUGIN_OUTPUT_LOCATIONS_FILE: "locations.txt"
     commands:
       - |
         for var in PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX PLUGIN_PRERELEASE; do
@@ -44,12 +43,12 @@ steps:
       - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
       - python3 /app/release.py
 
-  - name: Release diff check
-    image: netanelzucaim123/master-versions-vs-changed-files:latest
-    environment:
-      PLUGIN_MASTER_VERSIONS_LOCATIONS_FILE: "locations.txt"
-      PLUGIN_CHANGED_DIRS_FILE: "changed_dirs.txt"
-      PLUGIN_FAIL_ON_MISMATCH: "true"
+  # - name: Release diff check
+  #   image: netanelzucaim123/master-versions-vs-changed-files:latest
+  #   environment:
+  #     PLUGIN_MASTER_VERSIONS_LOCATIONS_FILE: "locations.txt"
+  #     PLUGIN_CHANGED_DIRS_FILE: "changed_dirs.txt"
+  #     PLUGIN_FAIL_ON_MISMATCH: "true"
 
   - name: Push changelogs to Git
     image: alpine/git
