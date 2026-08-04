@@ -67,3 +67,23 @@ jobs:
           git -c http.extraheader="CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
               -c http.extraheader="CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
               push --mirror "https://admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}@bitbucket.devopstashtiot.page/scm/awoodpeckerplugins/a-woodpecker-plugins.git"
+
+      - name: Ensure Bitbucket's default branch matches GitHub's
+        # A `--mirror` push doesn't set Bitbucket's default branch. Bitbucket
+        # Server auto-detects it on first push only when "master" is among
+        # the pushed branches (an older Bitbucket Server convention) — a
+        # repo whose default is "main" (or anything else) is silently left
+        # with no default branch at all, breaking anything that relies on
+        # one (e.g. the commits API), even though every branch and commit
+        # mirrored correctly. Setting it explicitly, every run, is a no-op
+        # once it's already correct.
+        env:
+          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          BB_PASSWORD: ${{ secrets.BITBUCKET_ADMIN_PASSWORD }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          curl -sf -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+            -X PUT "https://bitbucket.devopstashtiot.page/rest/api/latest/projects/AWOODPECKERPLUGINS/repos/a-woodpecker-plugins/branches/default" \
+            -H "Content-Type: application/json" \
+            -d "{\"id\":\"refs/heads/$DEFAULT_BRANCH\"}"
