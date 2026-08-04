@@ -37,20 +37,20 @@ jobs:
             curl -s -o /dev/null -w "%{http_code}" -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" "$@"
           }
 
-          project_status=$(status "$base/projects/AWOODPECKERPLUGINS")
+          project_status=$(status "$base/projects/DEVOPSTASHTIOT")
           if [ "$project_status" = "404" ]; then
-            echo "AWOODPECKERPLUGINS project missing — creating it"
+            echo "DEVOPSTASHTIOT project missing — creating it"
             call -X POST "$base/projects" -H "Content-Type: application/json" \
-              -d '{"key":"AWOODPECKERPLUGINS","name":"a-woodpecker-plugins","description":"Mirror of github.com/devops-tashtiot/a-woodpecker-plugins (GitHub is source of truth)"}'
+              -d '{"key":"DEVOPSTASHTIOT","name":"devops-tashtiot","description":"All GitHub-mirrored devops-tashtiot org repos (GitHub is source of truth)"}'
           elif [ "$project_status" != "200" ]; then
-            echo "::error::Unexpected status $project_status checking for the AWOODPECKERPLUGINS project"
+            echo "::error::Unexpected status $project_status checking for the DEVOPSTASHTIOT project"
             exit 1
           fi
 
-          repo_status=$(status "$base/projects/AWOODPECKERPLUGINS/repos/a-woodpecker-plugins")
+          repo_status=$(status "$base/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins")
           if [ "$repo_status" = "404" ]; then
             echo "a-woodpecker-plugins repo missing — creating it"
-            call -X POST "$base/projects/AWOODPECKERPLUGINS/repos" -H "Content-Type: application/json" \
+            call -X POST "$base/projects/DEVOPSTASHTIOT/repos" -H "Content-Type: application/json" \
               -d '{"name":"a-woodpecker-plugins","scmId":"git"}'
           elif [ "$repo_status" != "200" ]; then
             echo "::error::Unexpected status $repo_status checking for the a-woodpecker-plugins repo"
@@ -66,7 +66,7 @@ jobs:
         run: |
           git -c http.extraheader="CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
               -c http.extraheader="CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
-              push --mirror "https://admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}@bitbucket.devopstashtiot.page/scm/awoodpeckerplugins/a-woodpecker-plugins.git"
+              push --mirror "https://admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}@bitbucket.devopstashtiot.page/scm/devopstashtiot/a-woodpecker-plugins.git"
 
       - name: Ensure Bitbucket's default branch matches GitHub's
         # A `--mirror` push doesn't set Bitbucket's default branch. Bitbucket
@@ -84,6 +84,6 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           curl -sf -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
-            -X PUT "https://bitbucket.devopstashtiot.page/rest/api/latest/projects/AWOODPECKERPLUGINS/repos/a-woodpecker-plugins/branches/default" \
+            -X PUT "https://bitbucket.devopstashtiot.page/rest/api/latest/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/branches/default" \
             -H "Content-Type: application/json" \
             -d "{\"id\":\"refs/heads/$DEFAULT_BRANCH\"}"
