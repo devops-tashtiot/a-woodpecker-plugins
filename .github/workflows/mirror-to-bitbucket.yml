@@ -1,0 +1,69 @@
+name: Mirror to Bitbucket
+
+# One-way mirror: GitHub is the source of truth for this repo. Every push
+# here re-syncs the full repo (all branches, tags, and their deletions) onto
+# the self-hosted Bitbucket instance at bitbucket.devopstashtiot.page. Never
+# push directly to the Bitbucket copy — the next sync overwrites it.
+on:
+  push:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Bitbucket is reachable before mirroring
+        run: |
+          status=$(curl -s -o /tmp/bb-status.json -w "%{http_code}" \
+            -H "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+            -H "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
+            https://bitbucket.devopstashtiot.page/status)
+          echo "HTTP $status: $(cat /tmp/bb-status.json)"
+          if [ "$status" != "200" ] || ! grep -q '"state":"RUNNING"' /tmp/bb-status.json; then
+            echo "::error::Bitbucket is not up/healthy — skipping mirror push"
+            exit 1
+          fi
+
+      - name: Ensure the Bitbucket project/repo exist (self-healing after a platform rebuild)
+        env:
+          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          BB_PASSWORD: ${{ secrets.BITBUCKET_ADMIN_PASSWORD }}
+        run: |
+          base="https://bitbucket.devopstashtiot.page/rest/api/latest"
+          call() {
+            curl -sf -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" "$@"
+          }
+          status() {
+            curl -s -o /dev/null -w "%{http_code}" -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" "$@"
+          }
+
+          project_status=$(status "$base/projects/AWOODPECKERPLUGINS")
+          if [ "$project_status" = "404" ]; then
+            echo "AWOODPECKERPLUGINS project missing — creating it"
+            call -X POST "$base/projects" -H "Content-Type: application/json" \
+              -d '{"key":"AWOODPECKERPLUGINS","name":"a-woodpecker-plugins","description":"Mirror of github.com/devops-tashtiot/a-woodpecker-plugins (GitHub is source of truth)"}'
+          elif [ "$project_status" != "200" ]; then
+            echo "::error::Unexpected status $project_status checking for the AWOODPECKERPLUGINS project"
+            exit 1
+          fi
+
+          repo_status=$(status "$base/projects/AWOODPECKERPLUGINS/repos/a-woodpecker-plugins")
+          if [ "$repo_status" = "404" ]; then
+            echo "a-woodpecker-plugins repo missing — creating it"
+            call -X POST "$base/projects/AWOODPECKERPLUGINS/repos" -H "Content-Type: application/json" \
+              -d '{"name":"a-woodpecker-plugins","scmId":"git"}'
+          elif [ "$repo_status" != "200" ]; then
+            echo "::error::Unexpected status $repo_status checking for the a-woodpecker-plugins repo"
+            exit 1
+          fi
+
+      - name: Mirror-clone from GitHub
+        run: |
+          git clone --mirror "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo-mirror
+
+      - name: Push mirror to Bitbucket
+        working-directory: repo-mirror
+        run: |
+          git -c http.extraheader="CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+              -c http.extraheader="CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
+              push --mirror "https://admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}@bitbucket.devopstashtiot.page/scm/awoodpeckerplugins/a-woodpecker-plugins.git"
