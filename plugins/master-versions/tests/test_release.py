@@ -1,7 +1,10 @@
+import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
 
 import types
 
@@ -11,10 +14,15 @@ release_module.__file__ = _src_path
 with open(_src_path) as _f:
     exec(compile(_f.read(), _src_path, "exec"), release_module.__dict__)
 
-parse_pr_body        = release_module.parse_pr_body
-_known_commit_types  = release_module._known_commit_types
-_expand_locations    = release_module._expand_locations
-release              = release_module.release
+parse_pr_body                  = release_module.parse_pr_body
+_known_commit_types            = release_module._known_commit_types
+_expand_locations               = release_module._expand_locations
+_bump_subject                   = release_module._bump_subject
+_retrieve_message               = release_module._retrieve_message
+_retrieve_pull_request_message  = release_module._retrieve_pull_request_message
+_retrieve_manual_message        = release_module._retrieve_manual_message
+_retrieve_push_message          = release_module._retrieve_push_message
+release                         = release_module.release
 
 
 # ---------------------------------------------------------------------------
@@ -694,6 +702,168 @@ class TestExpandLocations(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Class 3b — TestBumpSubject
+#
+# _bump_subject(commit) decides what text is sent to git-cliff's --bump call.
+# Upstream git-cliff bug (conventional_commits=false): custom bump regexes are
+# only reliably applied to a single-line commit — see
+# https://github.com/orhun/git-cliff/issues/1476. If a commit's first line
+# already has real text after the type/colon, any additional lines must be
+# dropped (matches the upstream issue exactly: a body attached without a
+# blank-line separator silently degrades to a patch bump). But if the first
+# line is a BARE "type:" with nothing after it (the real description deferred
+# to the next line), dropping everything leaves git-cliff with no description
+# at all, which independently also falls back to patch — so in that specific
+# case the first non-blank continuation line must be folded in instead.
+# ---------------------------------------------------------------------------
+
+class TestBumpSubject(unittest.TestCase):
+
+    def test_1_single_line_commit_unchanged(self):
+        self.assertEqual(_bump_subject("feat: add login"), "feat: add login")
+
+    def test_2_subject_with_body_drops_the_body(self):
+        """
+        Checks: when the first line already has a real description, extra
+                lines are dropped (this is the original, still-needed fix —
+                passing them through re-triggers the upstream git-cliff bug).
+        """
+        commit = "feat: real subject\nSecond line of body."
+        self.assertEqual(_bump_subject(commit), "feat: real subject")
+
+    def test_3_bare_type_folds_in_next_line(self):
+        """
+        Checks: 'feat:' with nothing after the colon, and the actual
+                description entirely on the next line, folds that line in
+                instead of leaving git-cliff with a bare, unrecognizable
+                'feat:'.
+        """
+        commit = "feat:\nnatiii"
+        self.assertEqual(_bump_subject(commit), "feat: natiii")
+
+    def test_4_bare_type_with_blank_continuation_lines_skipped(self):
+        """
+        Checks: blank continuation lines between the bare type line and the
+                real description are skipped over, not folded in as-is.
+        """
+        commit = "breaking:\n\n\nmajor change"
+        self.assertEqual(_bump_subject(commit), "breaking: major change")
+
+    def test_5_bare_type_with_no_continuation_at_all(self):
+        """
+        Checks: a truly empty commit ('feat:' with nothing after it at all,
+                anywhere) is returned as-is — nothing to fold in.
+        """
+        self.assertEqual(_bump_subject("feat:"), "feat:")
+
+
+# ---------------------------------------------------------------------------
+# Class 3c — TestRetrieveMessage
+#
+# _retrieve_message() dispatches on CI_PIPELINE_EVENT to determine how to get
+# the release message:
+#   pull_request -> Bitbucket Server REST API (PLUGIN_BITBUCKET_TOKEN,
+#                    CI_FORGE_URL, CI_REPO_OWNER, CI_REPO_NAME,
+#                    CI_COMMIT_PULL_REQUEST)
+#   manual        -> PLUGIN_MESSAGE env var as-is
+#   anything else -> git log -1 --pretty=%B, extracting the DESCRIPTION
+#                    section (see INCIDENT_PULL_REQUEST_CLOSED_TRAP.md)
+# ---------------------------------------------------------------------------
+
+class TestRetrieveMessage(unittest.TestCase):
+
+    def test_1_pull_request_success(self):
+        env = {
+            "PLUGIN_BITBUCKET_TOKEN": "tok123",
+            "CI_FORGE_URL": "https://bitbucket.example.com",
+            "CI_REPO_OWNER": "PROJ",
+            "CI_REPO_NAME": "myrepo",
+            "CI_COMMIT_PULL_REQUEST": "42",
+        }
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'{"id": 42, "title": "My PR", "description": "feat[nati]: add login"}'
+        with patch.dict(os.environ, env, clear=False), \
+             patch.object(release_module, "urlopen", return_value=mock_response) as mock_urlopen:
+            result = _retrieve_pull_request_message()
+        self.assertEqual(result, "feat[nati]: add login")
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn("PROJ", req.full_url)
+        self.assertIn("myrepo", req.full_url)
+        self.assertIn("42", req.full_url)
+        self.assertEqual(req.get_header("Authorization"), "Bearer tok123")
+
+    def test_2_pull_request_missing_env_var_returns_none(self):
+        """Checks: a missing required env var is caught and returns None (not a crash)."""
+        with patch.dict(os.environ, {}, clear=True):
+            result = _retrieve_pull_request_message()
+        self.assertIsNone(result)
+
+    def test_3_pull_request_api_failure_returns_none(self):
+        env = {
+            "PLUGIN_BITBUCKET_TOKEN": "tok",
+            "CI_FORGE_URL": "https://bitbucket.example.com",
+            "CI_REPO_OWNER": "PROJ",
+            "CI_REPO_NAME": "myrepo",
+            "CI_COMMIT_PULL_REQUEST": "1",
+        }
+        with patch.dict(os.environ, env, clear=False), \
+             patch.object(release_module, "urlopen", side_effect=Exception("network error")):
+            result = _retrieve_pull_request_message()
+        self.assertIsNone(result)
+
+    def test_4_manual_message_present(self):
+        with patch.dict(os.environ, {"PLUGIN_MESSAGE": "feat[nati]: add login"}, clear=False):
+            result = _retrieve_manual_message()
+        self.assertEqual(result, "feat[nati]: add login")
+
+    def test_5_manual_message_empty_returns_none(self):
+        with patch.dict(os.environ, {"PLUGIN_MESSAGE": ""}, clear=False):
+            result = _retrieve_manual_message()
+        self.assertIsNone(result)
+
+    def test_6_push_message_extracts_description_section(self):
+        mock_result = MagicMock()
+        mock_result.stdout = (
+            "Merge pull request #12 from feature-branch\n\n"
+            "METADATA\n"
+            "Title: Add login\n\n"
+            "DESCRIPTION\n"
+            "feat[nati]: add login\n"
+        )
+        with patch.object(release_module, "run_command", return_value=mock_result):
+            result = _retrieve_push_message()
+        self.assertEqual(result, "feat[nati]: add login")
+
+    def test_7_push_message_no_description_marker_uses_full_message(self):
+        mock_result = MagicMock()
+        mock_result.stdout = "Direct push, not a merge commit\n"
+        with patch.object(release_module, "run_command", return_value=mock_result):
+            result = _retrieve_push_message()
+        self.assertEqual(result, "Direct push, not a merge commit")
+
+    def test_8_dispatch_pull_request_event(self):
+        with patch.dict(os.environ, {"CI_PIPELINE_EVENT": "pull_request"}, clear=False), \
+             patch.object(release_module, "_retrieve_pull_request_message", return_value="from-pr") as mock_fn:
+            result = _retrieve_message()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, "from-pr")
+
+    def test_9_dispatch_manual_event(self):
+        with patch.dict(os.environ, {"CI_PIPELINE_EVENT": "manual"}, clear=False), \
+             patch.object(release_module, "_retrieve_manual_message", return_value="from-manual") as mock_fn:
+            result = _retrieve_message()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, "from-manual")
+
+    def test_10_dispatch_push_event_default(self):
+        with patch.dict(os.environ, {"CI_PIPELINE_EVENT": "push"}, clear=False), \
+             patch.object(release_module, "_retrieve_push_message", return_value="from-push") as mock_fn:
+            result = _retrieve_message()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, "from-push")
+
+
+# ---------------------------------------------------------------------------
 # Class 4 — TestRelease
 #
 # release() — full integration test with env vars and subprocess mocked.
@@ -707,47 +877,40 @@ class TestRelease(unittest.TestCase):
 
     def _run(self, message, dirs_exist=(), cliff_stdout="nati-1.1.0",
              cliff_returncode=0, cliff_stderr="", list_dirs=(),
-             exclude_regex="", output_tags_file="", changelog_level="1",
-             prerelease=""):
+             exclude_regex="", output_tags_file="", changelog_level="1"):
         """
         Helper: patches env vars and all filesystem/subprocess calls, then
         calls release() and returns the mock for run_command.
         changelog_level defaults to "1" (required by release()).
         Pass "" to simulate the variable being unset.
 
-        PLUGIN_MESSAGE_FILE: release() reads the PR body from a file, not an
-        env var. We write the message to a real temp file and point
-        PLUGIN_MESSAGE_FILE at it so release() can open it normally.
+        The message is injected via the "manual" retrieval path
+        (CI_PIPELINE_EVENT=manual + PLUGIN_MESSAGE) so no real file or
+        subprocess/network access is needed to supply it.
         """
         mock_result = MagicMock()
         mock_result.returncode = cliff_returncode
         mock_result.stdout = cliff_stdout
         mock_result.stderr = cliff_stderr
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write(message)
-            tmp_path = f.name
-
         env = {
-            "PLUGIN_MESSAGE_FILE":        tmp_path,
+            "PLUGIN_MESSAGE":             message,
+            "CI_PIPELINE_EVENT":          "manual",
             "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": exclude_regex,
             "PLUGIN_OUTPUT_TAGS_FILE":    output_tags_file,
             "PLUGIN_VERBOSE":             "0",
             "PLUGIN_CHANGELOG_LEVEL":     changelog_level,
-            "PLUGIN_PRERELEASE":          prerelease,
         }
 
-        try:
-            with patch.dict(os.environ, env, clear=False), \
-                 patch("os.path.exists", return_value=True), \
-                 patch("os.path.isdir", side_effect=lambda p: any(p.endswith(d) for d in dirs_exist)), \
-                 patch("os.listdir", return_value=list(list_dirs)), \
-                 patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
-                 patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
-                release()
-        finally:
-            os.unlink(tmp_path)
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.path.isdir", side_effect=lambda p: any(p.endswith(d) for d in dirs_exist)), \
+             patch("os.listdir", return_value=list(list_dirs)), \
+             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
+             patch("builtins.open", mock_open()), \
+             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            release()
 
         return mock_cmd
 
@@ -793,17 +956,22 @@ class TestRelease(unittest.TestCase):
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
         self.assertNotIn("git cliff", calls_str)
 
-    def test_3_empty_message_does_nothing(self):
+    def test_3_message_with_no_commit_lines_does_nothing(self):
         """
-        Checks: empty PLUGIN_MESSAGE → parse_pr_body returns {} → release()
-                prints "No release commits detected" and exits early.
-                run_command is never called.
+        Checks: a message with no commit lines → parse_pr_body returns {} →
+                release() prints "No release commits detected" and exits
+                early. run_command is never called.
+
+        Note: a genuinely *empty* PLUGIN_MESSAGE is rejected earlier, by
+        _retrieve_manual_message() itself (see TestRetrieveMessage) — this
+        test covers the distinct case of a non-empty message that simply
+        contains no releasable commit lines.
 
         Example:
-          PLUGIN_MESSAGE = ""
+          PLUGIN_MESSAGE = "just some prose, no commits here"
           Result: run_command.call_count == 0
         """
-        mock_cmd = self._run("", dirs_exist=[])
+        mock_cmd = self._run("just some prose, no commits here", dirs_exist=[])
         mock_cmd.assert_not_called()
 
     def test_4_cliff_failure_does_not_crash(self):
@@ -1003,9 +1171,6 @@ class TestChangelogLevel(unittest.TestCase):
         mock_result.stderr = ""
 
         env = {
-            # PLUGIN_MESSAGE_FILE is not reached — release() exits before it
-            # when PLUGIN_CHANGELOG_LEVEL is unset.
-            "PLUGIN_MESSAGE_FILE":        "dummy.txt",
             "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
@@ -1040,9 +1205,6 @@ class TestChangelogLevel(unittest.TestCase):
         mock_result.stderr = ""
 
         env = {
-            # PLUGIN_MESSAGE_FILE is not reached — release() exits before it
-            # when PLUGIN_CHANGELOG_LEVEL is non-integer.
-            "PLUGIN_MESSAGE_FILE":        "dummy.txt",
             "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
@@ -1087,12 +1249,9 @@ class TestCliffTomlResolution(unittest.TestCase):
                 return workspace_has_cliff
             return True  # everything else (dirs, changelog, etc.) exists
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("feat[nati]: add login")
-            tmp_path = f.name
-
         env = {
-            "PLUGIN_MESSAGE_FILE":        tmp_path,
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "CI_PIPELINE_EVENT":          "manual",
             "PLUGIN_BASE_PATH":                "/repo",
             "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
             "PLUGIN_OUTPUT_TAGS_FILE":    "",
@@ -1104,16 +1263,14 @@ class TestCliffTomlResolution(unittest.TestCase):
         else:
             env.pop("PLUGIN_CLIFF_TOML", None)
 
-        try:
-            with patch.dict(os.environ, env, clear=False), \
-                 patch("os.path.exists", side_effect=fake_exists), \
-                 patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
-                 patch("os.listdir", return_value=[]), \
-                 patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
-                 patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
-                release()
-        finally:
-            os.unlink(tmp_path)
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", side_effect=fake_exists), \
+             patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
+             patch("os.listdir", return_value=[]), \
+             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
+             patch("builtins.open", mock_open()), \
+             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            release()
 
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
         # extract the --config <path> value from the recorded calls
@@ -1145,6 +1302,298 @@ class TestCliffTomlResolution(unittest.TestCase):
         bundled = os.path.join(os.path.dirname(_src_path), "cliff.toml")
         used = self._run_with_toml_env("", workspace_has_cliff=False)
         self.assertEqual(used, bundled)
+
+
+# ---------------------------------------------------------------------------
+# Class 6 — TestBranchResolution
+#
+# release() resolves which branch's tags to trust before processing any
+# location: CI_PIPELINE_EVENT=pull_request -> CI_COMMIT_TARGET_BRANCH,
+# otherwise -> CI_COMMIT_BRANCH. It resets remote.origin.tagOpt first (so a
+# --no-tags clone setting doesn't block later auto-follow). Both PR and
+# non-PR cases fetch the resolved branch into an explicit
+# refs/remotes/origin/<branch> destination (never passing --tags/--no-tags
+# itself) — even for the branch already checked out, since tag auto-follow
+# only fires during a real fetch negotiation; a plain re-fetch of an
+# already-tracked ref is a no-op that skips it, and just having the commit
+# data locally (e.g. via a depth:0 clone) isn't enough on its own.
+# ---------------------------------------------------------------------------
+
+class TestBranchResolution(unittest.TestCase):
+
+    def _run(self, extra_env):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "nati-1.1.0"
+        mock_result.stderr = ""
+
+        env = {
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "PLUGIN_BASE_PATH":                "/repo",
+            "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
+            "PLUGIN_OUTPUT_TAGS_FILE":    "",
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     "1",
+            "CI_PIPELINE_EVENT":          "manual",
+            "CI_COMMIT_BRANCH":           "",
+            "CI_COMMIT_TARGET_BRANCH":    "",
+        }
+        env.update(extra_env)
+
+        # A pull_request event routes _retrieve_message() through the
+        # Bitbucket API path, which needs these vars and a mocked urlopen
+        # (rather than a real network call) to hand back PLUGIN_MESSAGE.
+        if env.get("CI_PIPELINE_EVENT") == "pull_request":
+            env.setdefault("PLUGIN_BITBUCKET_TOKEN", "tok")
+            env.setdefault("CI_FORGE_URL", "https://bitbucket.example.com")
+            env.setdefault("CI_REPO_OWNER", "PROJ")
+            env.setdefault("CI_REPO_NAME", "myrepo")
+            env.setdefault("CI_COMMIT_PULL_REQUEST", "1")
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(
+            {"id": 1, "title": "t", "description": env["PLUGIN_MESSAGE"]}
+        ).encode()
+
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.path.isdir", return_value=True), \
+             patch("os.listdir", return_value=[]), \
+             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
+             patch("builtins.open", mock_open()), \
+             patch.object(release_module, "urlopen", return_value=mock_response), \
+             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+            release()
+
+        return mock_cmd
+
+    def test_1_tagopt_reset_always_happens(self):
+        """
+        Checks: `git config --unset-all remote.origin.tagOpt` is run regardless
+                of PR/non-PR, since the clone step's tags: setting can persist
+                and block later auto-follow otherwise.
+        """
+        mock_cmd = self._run({})
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("git config --unset-all remote.origin.tagOpt", calls_str)
+
+    def test_2_pr_event_fetches_target_branch_no_tag_flags(self):
+        """
+        Checks: CI_PIPELINE_EVENT=pull_request + CI_COMMIT_TARGET_BRANCH=main
+                fetches 'main' into a fresh remote-tracking ref, and that fetch
+                command contains neither --tags nor --no-tags (relies on git's
+                default auto-follow).
+        """
+        mock_cmd = self._run({
+            "CI_PIPELINE_EVENT":       "pull_request",
+            "CI_COMMIT_TARGET_BRANCH": "main",
+        })
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("git fetch origin main:refs/remotes/origin/main", calls_str)
+        # Step 1 tag lookup should target the fetched branch, not HEAD.
+        self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/main", calls_str)
+
+    def test_3_non_pr_also_fetches_its_own_branch_explicitly(self):
+        """
+        Checks: without a pull_request event, CI_COMMIT_BRANCH still gets
+                fetched into refs/remotes/origin/<branch> (even though it's
+                already checked out) — required for tag auto-follow to
+                actually fire — and the tag lookup targets that fetched ref,
+                not HEAD directly.
+        """
+        mock_cmd = self._run({"CI_COMMIT_BRANCH": "hotfix"})
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("git fetch origin hotfix:refs/remotes/origin/hotfix", calls_str)
+        self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/hotfix", calls_str)
+
+    def test_4_neither_var_set_falls_back_to_head(self):
+        """
+        Checks: outside Woodpecker (no CI_PIPELINE_EVENT/CI_COMMIT_BRANCH set
+                at all, e.g. a bare local run), tag lookup falls back to HEAD
+                and no branch-resolution fetch happens.
+        """
+        mock_cmd = self._run({})
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("--match 'nati-v[0-9]*' HEAD", calls_str)
+
+    def test_5_tag_lookup_uses_describe_not_tag_list(self):
+        """
+        Checks: the STEP 1 tag lookup uses `git describe --tags --abbrev=0
+                --match` (ancestry-scoped) rather than the old
+                `git tag -l --sort=-version:refname` (globally-highest).
+        """
+        mock_cmd = self._run({})
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("git describe --tags --abbrev=0 --match", calls_str)
+        self.assertNotIn("--sort=-version:refname", calls_str)
+
+
+# ---------------------------------------------------------------------------
+# Class 7 — TestHotfixBranchTagResolution
+#
+# Real-git integration test (run_command is NOT mocked here — this exercises
+# actual git and git-cliff subprocesses) reproducing the exact scenario that
+# motivated this feature: a component has nati-v1.0.0 and nati-v2.0.0 on
+# mainline; a hotfix branch cut from nati-v1.0.0 must resolve/bump against
+# nati-v1.0.0 (not the globally-higher nati-v2.0.0), and a PR build sourced
+# from that same hotfix branch must still resolve against the target
+# branch's own latest tag. Requires `git` and `git-cliff` on PATH.
+# ---------------------------------------------------------------------------
+
+class TestHotfixBranchTagResolution(unittest.TestCase):
+
+    def _git(self, *args, cwd):
+        result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, f"git {' '.join(args)} failed: {result.stderr}")
+        return result.stdout.strip()
+
+    def setUp(self):
+        self.src_dir = tempfile.mkdtemp(prefix="release_src_")
+        self._git("init", "-q", cwd=self.src_dir)
+        self._git("config", "user.email", "test@test.com", cwd=self.src_dir)
+        self._git("config", "user.name", "test", cwd=self.src_dir)
+        self._git("checkout", "-q", "-b", "master", cwd=self.src_dir)
+
+        os.makedirs(os.path.join(self.src_dir, "nati"))
+        with open(os.path.join(self.src_dir, "nati", "f.txt"), "w") as f:
+            f.write("v1")
+        self._git("add", ".", cwd=self.src_dir)
+        self._git("commit", "-q", "-m", "feat: initial release", cwd=self.src_dir)
+        self._git("tag", "nati-v1.0.0", cwd=self.src_dir)
+
+        with open(os.path.join(self.src_dir, "nati", "f.txt"), "w") as f:
+            f.write("v2")
+        self._git("add", ".", cwd=self.src_dir)
+        self._git("commit", "-q", "-m", "feat: big new feature", cwd=self.src_dir)
+        self._git("tag", "nati-v2.0.0", cwd=self.src_dir)
+
+        self._git("checkout", "-q", "-b", "hotfix", "nati-v1.0.0", cwd=self.src_dir)
+        with open(os.path.join(self.src_dir, "nati", "f.txt"), "w") as f:
+            f.write("v1-fix")
+        self._git("add", ".", cwd=self.src_dir)
+        self._git("commit", "-q", "-m", "hotfix commit", cwd=self.src_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.src_dir, ignore_errors=True)
+
+    def _clone_and_run(self, message, extra_env):
+        """
+        Reproduces Woodpecker's actual plugin-git clone mechanism -- `git init`
+        + `git fetch --no-tags origin <ref>` (matching tags: false), NOT a
+        plain `git clone --branch ... --no-tags`, which (without
+        --single-branch) fetches every branch regardless of the tags flag and
+        would misrepresent what CI actually does.
+
+        The release message is injected via the "manual" retrieval path
+        (CI_PIPELINE_EVENT=manual + PLUGIN_MESSAGE) by default. For a
+        pull_request event, urlopen is mocked to hand back `message` as the
+        PR description instead, since there's no real Bitbucket server here.
+        """
+        repo_dir = tempfile.mkdtemp(prefix="release_repo_")
+        tags_file = None
+        old_cwd = os.getcwd()
+        try:
+            self._git("init", "-q", cwd=repo_dir)
+            self._git("remote", "add", "origin", self.src_dir, cwd=repo_dir)
+            self._git("fetch", "-q", "--no-tags", "origin", "hotfix", cwd=repo_dir)
+            self._git("checkout", "-q", "FETCH_HEAD", cwd=repo_dir)
+            cliff_toml = os.path.join(os.path.dirname(_src_path), "cliff.toml")
+
+            tags_file = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False).name
+
+            env = {
+                "PLUGIN_MESSAGE":          message,
+                "PLUGIN_BASE_PATH":        ".",
+                "PLUGIN_CHANGELOG_LEVEL":  "1",
+                "PLUGIN_OUTPUT_TAGS_FILE": tags_file,
+                "PLUGIN_CLIFF_TOML":       cliff_toml,
+                "PLUGIN_VERBOSE":          "0",
+                "CI_PIPELINE_EVENT":       "manual",
+                "CI_COMMIT_BRANCH":        "",
+                "CI_COMMIT_TARGET_BRANCH": "",
+            }
+            env.update(extra_env)
+
+            is_pr = env.get("CI_PIPELINE_EVENT") == "pull_request"
+            if is_pr:
+                env.setdefault("PLUGIN_BITBUCKET_TOKEN", "tok")
+                env.setdefault("CI_FORGE_URL", "https://bitbucket.example.com")
+                env.setdefault("CI_REPO_OWNER", "PROJ")
+                env.setdefault("CI_REPO_NAME", "myrepo")
+                env.setdefault("CI_COMMIT_PULL_REQUEST", "1")
+
+            os.chdir(repo_dir)
+            with patch.dict(os.environ, env, clear=False):
+                if is_pr:
+                    mock_response = MagicMock()
+                    mock_response.read.return_value = json.dumps(
+                        {"id": 1, "title": "t", "description": message}
+                    ).encode()
+                    with patch.object(release_module, "urlopen", return_value=mock_response):
+                        release()
+                else:
+                    release()
+
+            with open(tags_file) as f:
+                return [line.strip() for line in f if line.strip()]
+        finally:
+            os.chdir(old_cwd)
+            shutil.rmtree(repo_dir, ignore_errors=True)
+            if tags_file:
+                os.unlink(tags_file)
+
+    def test_1_hotfix_branch_resolves_against_own_ancestor_not_global_latest(self):
+        """
+        Checks: a fix committed on the hotfix branch (cut from nati-v1.0.0,
+                with nati-v2.0.0 existing on mainline) bumps to nati-v1.0.1 —
+                not nati-v2.0.1, which is what the old highest-tag-wins logic
+                would have produced.
+        """
+        tags = self._clone_and_run(
+            "fix[nati]: patch bug",
+            {"CI_COMMIT_BRANCH": "hotfix"},
+        )
+        self.assertEqual(tags, ["nati-v1.0.1"])
+
+    def test_2_pr_event_resolves_against_target_branch(self):
+        """
+        Checks: the same hotfix checkout, but flagged as a pull_request event
+                targeting master, resolves against master's own latest tag
+                (nati-v2.0.0 -> nati-v2.1.0) instead of the hotfix branch's
+                ancestry — "what this would look like once merged."
+        """
+        tags = self._clone_and_run(
+            "feat[nati]: normal feature",
+            {"CI_PIPELINE_EVENT": "pull_request", "CI_COMMIT_TARGET_BRANCH": "master"},
+        )
+        self.assertEqual(tags, ["nati-v2.1.0"])
+
+    def test_3_breaking_commit_crosses_major_version_line(self):
+        """
+        Checks: a breaking commit on the hotfix branch correctly bumps past
+                the major-version boundary (nati-v1.0.0 -> nati-v2.0.0) rather
+                than failing a tag-pattern mismatch — guards the specific
+                failure mode that ruled out the pattern-narrowing approach.
+        """
+        tags = self._clone_and_run(
+            "breaking[nati]: major change",
+            {"CI_COMMIT_BRANCH": "hotfix"},
+        )
+        self.assertEqual(tags, ["nati-v2.0.0"])
+
+    def test_4_bare_type_with_description_on_next_line_still_bumps_minor(self):
+        """
+        Checks end-to-end: a PR body written as 'feat[nati]:' with the actual
+                description entirely on the next line still produces a minor
+                bump, not a patch — guards the upstream git-cliff bug
+                (https://github.com/orhun/git-cliff/issues/1476) combined with
+                release.py's own subject-only bump-call truncation.
+        """
+        tags = self._clone_and_run(
+            "feat[nati]:\nnatiii",
+            {"CI_COMMIT_BRANCH": "hotfix"},
+        )
+        self.assertEqual(tags, ["nati-v1.1.0"])
 
 
 if __name__ == "__main__":

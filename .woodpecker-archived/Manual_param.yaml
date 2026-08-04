@@ -3,29 +3,20 @@ clone:
     image: woodpeckerci/plugin-git
     settings:
       depth: 0
-      tags: true
+      tags: false
 
 when:
   - event: manual
     branch: check
 
 steps:
-  - name: Write message to file
-    image: alpine
-    environment:
-      RELEASE_MESSAGE: "${RELEASE_MESSAGE}"
-    commands:
-      - '[ -n "$RELEASE_MESSAGE" ] || { echo ">>> ERROR: RELEASE_MESSAGE is empty — stopping pipeline"; exit 1; }'
-      - printf "%s" "$RELEASE_MESSAGE" > pr_body.txt
-      - echo ">>> Message written to pr_body.txt:" && cat pr_body.txt
-
   - name: Run release
     image: netanelzucaim123/master-versions:latest
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_SCOPE_EXCLUDE_REGEX: ""
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
-      PLUGIN_MESSAGE_FILE: "pr_body.txt"
+      PLUGIN_MESSAGE: "${MESSAGE}"
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
     commands:

@@ -23,7 +23,7 @@ By default git-cliff reads from the git log. This plugin does **not** use that m
 
 ## 2. Stateless mode — how this plugin uses git-cliff
 
-This plugin bypasses git history entirely. Instead of reading commits from the log, it injects the exact commit string from `PLUGIN_MESSAGE_FILE` directly into git-cliff via `--with-commit`.
+This plugin bypasses git history entirely. Instead of reading commits from the log, it injects the exact commit string — retrieved internally based on `CI_PIPELINE_EVENT` (see the README's "Message retrieval" section) — directly into git-cliff via `--with-commit`.
 
 The key flags that make this work:
 
@@ -166,5 +166,3 @@ The full multiline commit string is passed here — the body content is needed f
 3. git cliff --tag 'nati-1.1.0' ...   → write CHANGELOG.md (full commit body)
 4. append 'nati-1.1.0' to output tags file
 ```
-
-

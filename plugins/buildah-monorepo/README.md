@@ -12,8 +12,7 @@ Given a file containing a list of directory paths (one per line), the plugin:
 2. Finds the `Dockerfile` inside that directory
 3. Builds the image using `buildah bud --isolation rootless --storage-driver overlay`
 4. Tags the image as `REGISTRY/[REPO/]path:TAG`
-5. Pushes the versioned tag
-6. Optionally pushes one or more alias tags (e.g. `latest`, `prod`)
+5. Pushes all tags from `PLUGIN_TAGS`
 
 ### Example
 
@@ -24,7 +23,7 @@ plugins/lagziel
 base/argo
 ```
 
-With `PLUGIN_REGISTRY=10.89.0.1:5000`, `PLUGIN_REPO=check`, `PLUGIN_TAGS=abc1234`, `PLUGIN_ALIASES=latest`:
+With `PLUGIN_REGISTRY=10.89.0.1:5000`, `PLUGIN_REPO=check`, `PLUGIN_TAGS=abc1234,latest`:
 
 ```
 10.89.0.1:5000/check/plugins/harel:abc1234
@@ -36,6 +35,23 @@ With `PLUGIN_REGISTRY=10.89.0.1:5000`, `PLUGIN_REPO=check`, `PLUGIN_TAGS=abc1234
 10.89.0.1:5000/check/base/argo:abc1234
 10.89.0.1:5000/check/base/argo:latest
 ```
+
+### Example with `PLUGIN_BASE_PATH`
+
+`changed_dirs.txt` (produced by `changed-files` with `PLUGIN_BASE_PATH=nati/check` stripping):
+```
+root/sagi
+core
+```
+
+With `PLUGIN_BASE_PATH=nati/check`, `PLUGIN_REGISTRY=10.89.0.1:5000`, `PLUGIN_REPO=check`, `PLUGIN_TAGS=abc1234`:
+
+| Path in file | Dockerfile resolved at | Image pushed |
+|---|---|---|
+| `root/sagi` | `nati/check/root/sagi/Dockerfile` | `10.89.0.1:5000/check/root/sagi:abc1234` |
+| `core` | `nati/check/core/Dockerfile` | `10.89.0.1:5000/check/core:abc1234` |
+
+The base path is used only for locating files on disk — image names are always derived from the bare path in the changed file.
 
 ---
 
@@ -55,9 +71,9 @@ With `PLUGIN_REGISTRY=10.89.0.1:5000`, `PLUGIN_REPO=check`, `PLUGIN_TAGS=abc1234
 |----------|---------|-------------|
 | `PLUGIN_REGISTRY` | `index.docker.io` | Target registry |
 | `PLUGIN_REPO` | `""` | Namespace/repository prefix. Empty = path goes directly under registry |
-| `PLUGIN_TAGS` | *(none)* | Comma-separated tags to apply. If unset and no `.tags` file, falls back to `latest` |
-| `PLUGIN_ALIASES` | *(none)* | Comma-separated alias tags pushed alongside `PLUGIN_TAGS` (e.g. `latest,prod`) |
+| `PLUGIN_TAGS` | *(none)* | Comma-separated list of tags to push (e.g. `abc1234,latest,prod`). If unset and no `.tags` file, falls back to `latest` |
 | `PLUGIN_DOCKERFILE` | `Dockerfile` | Dockerfile filename to look for inside each directory |
+| `PLUGIN_BASE_PATH` | `""` | Path prefix prepended to every directory from `PLUGIN_CHANGED_FILE` when locating the Dockerfile. Does **not** affect image naming — the tag still uses the bare path from the file. |
 | `PLUGIN_CONTEXT` | `$PWD` | Root build context — each path is resolved relative to this |
 | `PLUGIN_LOG_LEVEL` | `info` | buildah log verbosity (`debug`, `info`, `warn`, `error`) |
 | `PLUGIN_DRY_RUN` | `""` | `"true"` → build only, skip push |
@@ -115,11 +131,10 @@ buildah bud --isolation rootless --storage-driver overlay ...
     PLUGIN_REGISTRY: "10.89.0.1:5000"
     PLUGIN_REPO: "myrepo"
     PLUGIN_INSECURE: "true"
-    PLUGIN_ALIASES: "latest"
     PLUGIN_USERNAME: "user"
     PLUGIN_PASSWORD: "pass"
   commands:
-    - export PLUGIN_TAGS="${CI_COMMIT_SHA:0:7}"
+    - export PLUGIN_TAGS="${CI_COMMIT_SHA:0:7},latest"
     - /app/plugin.sh
 ```
 
@@ -138,7 +153,7 @@ Both plugins use buildah to build and push images in a monorepo. They solve **di
 | **Versioning** | No version awareness — any tag string works | Semantically versioned — slug encodes the component path |
 | **Pipeline position** | Runs **before** `master-versions` (build every changed dir on every commit) | Runs **after** `master-versions` (build only what got a new semver release) |
 | **Use case** | Continuous delivery — push a SHA-tagged image on every change | Release delivery — push a semver-tagged image when a version is cut |
-| **Alias support** | Yes — `PLUGIN_ALIASES` | Yes — `PLUGIN_ALIASES` |
+| **Multiple tags** | Yes — comma-separated `PLUGIN_TAGS` | Yes — `PLUGIN_ALIASES` |
 
 ### When to use which
 

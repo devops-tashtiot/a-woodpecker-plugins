@@ -82,6 +82,7 @@ netanel-1.8           slug=netanel          version=1.8
 | `PLUGIN_REPO` | `""` | Image repository/namespace prefix |
 | `PLUGIN_DOCKERFILE` | `Dockerfile` | Dockerfile filename to look for |
 | `PLUGIN_ALIASES` | *(not set)* | Comma-separated alias tags pushed alongside the version tag. Not set by default — only the exact version tag is pushed. |
+| `PLUGIN_TAG_SUFFIX` | *(not set)* | String appended verbatim to the version before the image is built and pushed. e.g. `-abc123` → `:v1.2.0-abc123`, `_rc1` → `:v1.2.0_rc1`. |
 | `PLUGIN_DRY_RUN` | `false` | Set to `"true"` to build the image but skip the push (`buildah bud` runs, `buildah push` is skipped) |
 | `PLUGIN_LOG_LEVEL` | `info` | **buildah log verbosity.** Passed directly as `--log-level` to `buildah bud`. Available values: `panic`, `fatal`, `error`, `warn`, `info`, `debug`, `trace`. |
 | `PLUGIN_SKIP_TLS_VERIFY` | `false` | Set to `"true"` to use `--tls-verify=false` on push/login |
@@ -103,6 +104,21 @@ PLUGIN_ALIASES: "prod,staging"
 # → registry/repo/harel:v1.3.4
 # → registry/repo/harel:prod
 # → registry/repo/harel:staging
+```
+
+### PLUGIN_TAG_SUFFIX examples
+
+```yaml
+# No suffix (default)
+# tag: harel-v1.3.4  →  registry/repo/harel:v1.3.4
+
+# Append a git SHA
+PLUGIN_TAG_SUFFIX: "-abc1234"
+# tag: harel-v1.3.4  →  registry/repo/harel:v1.3.4-abc1234
+
+# Append a build number
+PLUGIN_TAG_SUFFIX: "_build42"
+# tag: harel-v1.3.4  →  registry/repo/harel:v1.3.4_build42
 ```
 
 ---

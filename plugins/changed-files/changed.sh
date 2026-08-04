@@ -8,6 +8,7 @@ OUTPUT_FILE="${PLUGIN_OUTPUT_FILE:-changed.txt}"
 OUTPUT_TYPE="${PLUGIN_OUTPUT_TYPE:-files}"
 FOLDER_DEPTH="${PLUGIN_FOLDER_DEPTH:-0}"
 DEDUP="${PLUGIN_DEDUP:-true}"
+BASE_PATH="${PLUGIN_BASE_PATH:-}"
 
 OUTPUT_DIR=$(dirname "$OUTPUT_FILE")
 if [ ! -d "$OUTPUT_DIR" ]; then
@@ -21,6 +22,11 @@ if [ $? -ne 0 ]; then
     echo "Error: Failed to get changed files using git diff." >&2
     echo "$changed_files" >&2
     exit 1
+fi
+
+if [ -n "${BASE_PATH}" ] && [ "${BASE_PATH}" != "." ]; then
+    BASE_PATH="${BASE_PATH%/}"
+    changed_files=$(printf '%s' "$changed_files" | grep "^${BASE_PATH}/" | sed "s|^${BASE_PATH}/||" || true)
 fi
 
 if [ -n "${PLUGIN_EXCLUDE_FILES_REGEX:-}" ]; then
@@ -67,7 +73,7 @@ if [ "$DEDUP" = "true" ]; then
     output=$(echo "$output" | sort -u)
 fi
 
-if ! echo "$output" > "$OUTPUT_FILE"; then
+if ! printf '%s' "$output" > "$OUTPUT_FILE"; then
     echo "Error: Failed to write output to file '$OUTPUT_FILE'." >&2
     exit 1
 fi

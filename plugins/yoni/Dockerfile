@@ -19,6 +19,3 @@ ENTRYPOINT ["/app/plugin.sh"]
 
 
 
-
-
-

@@ -142,28 +142,20 @@ collect_destinations() {
 
 buildah_build() {
     local path="${1}"
+    local fs_path="${2:-${path}}"
     local destinations
     destinations="$(collect_destinations "${path}")"
-    local aliases="${PLUGIN_ALIASES:-}"
 
     local first_tag=""
     if [ "${destinations}" != "__nopush__" ]; then
         first_tag="$(echo "${destinations}" | head -n1)"
     fi
 
-    local image_base
-    if [ -n "${PLUGIN_REPO:-}" ]; then
-        image_base="${REGISTRY}/${PLUGIN_REPO}/${path}"
-    else
-        image_base="${REGISTRY}/${path}"
-    fi
-
     echo "=========================================================================="
     if [ "${destinations}" = "__nopush__" ]; then
-        echo "(dry-run / no-push — context: ${CONTEXT}/${path})"
+        echo "(dry-run / no-push — context: ${CONTEXT}/${fs_path})"
     else
         echo "${destinations}"
-        [ -n "${aliases}" ] && echo "aliases: ${aliases}"
     fi
     echo "=========================================================================="
 
@@ -173,9 +165,9 @@ buildah_build() {
         --storage-driver overlay \
         --log-level "${LOG}" \
         ${EXTRA_OPTS} \
-        --file "${CONTEXT}/${path}/${DOCKERFILE}" \
+        --file "${CONTEXT}/${fs_path}/${DOCKERFILE}" \
         ${first_tag:+--tag "${first_tag}"} \
-        "${CONTEXT}/${path}" \
+        "${CONTEXT}/${fs_path}" \
         ${BUILD_ARGS:-} \
         ${BUILD_ARGS_FROM_ENV:-}
 
@@ -191,29 +183,53 @@ buildah_build() {
         buildah tag "${first_tag}" "${extra}"
         buildah push --tls-verify="${TLS_VERIFY}" "${extra}"
     done
-
-    if [ -n "${aliases}" ]; then
-        while IFS= read -r alias_tag; do
-            alias_tag="$(printf '%s' "${alias_tag}" | tr -d ' ')"
-            [ -z "${alias_tag}" ] && continue
-            local full_alias="${image_base}:${alias_tag}"
-            buildah tag "${first_tag}" "${full_alias}"
-            buildah push --tls-verify="${TLS_VERIFY}" "${full_alias}"
-            echo ">>> Pushed alias: ${full_alias}"
-        done << ALIASES
-$(printf '%s' "${aliases}" | tr ',' '\n')
-ALIASES
-    fi
 }
 
 run() {
-    while IFS= read -r path; do
-        buildah_build "${path}"
-    done < "${PLUGIN_CHANGED_FILE}"
+    local changed_file="${PLUGIN_CHANGED_FILE:-}"
+
+    if [ -z "${changed_file}" ]; then
+        echo ">>> PLUGIN_CHANGED_FILE is not set — nothing to build."
+        return 0
+    fi
+
+    # Resolve relative paths against the directory the script was invoked from
+    case "${changed_file}" in
+        /*) : ;;
+        *)  changed_file="${PWD}/${changed_file}" ;;
+    esac
+
+    if [ ! -f "${changed_file}" ]; then
+        echo ">>> Changed file '${changed_file}' does not exist — nothing to build."
+        return 0
+    fi
+
+    if [ ! -s "${changed_file}" ]; then
+        echo ">>> Changed file '${changed_file}' is empty — nothing to build."
+        return 0
+    fi
+
+    while IFS= read -r path || [ -n "$path" ]; do
+        [ -z "${path}" ] && continue
+
+        local fs_path
+        if [ -n "${BASE_PATH}" ]; then
+            fs_path="${BASE_PATH}/${path}"
+        else
+            fs_path="${path}"
+        fi
+
+        buildah_build "${path}" "${fs_path}"
+    done < "${changed_file}"
 }
 
 main() {
     REGISTRY="${PLUGIN_REGISTRY:-index.docker.io}"
+
+    # Strip trailing slash so "plugins/" and "plugins" behave identically
+    BASE_PATH="${PLUGIN_BASE_PATH:-}"
+    BASE_PATH="${BASE_PATH%/}"
+
     load_environment
     setup_docker_auth
     setup_buildah_options

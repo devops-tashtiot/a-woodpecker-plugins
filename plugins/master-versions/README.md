@@ -33,9 +33,11 @@ In a monorepo, each component has its own independent `CHANGELOG.md` and its own
 3. [Wildcard expansion](#3-wildcard-expansion)
 4. [PLUGIN_CHANGELOG_LEVEL enforcement](#4-plugin_changelog_level-enforcement)
 5. [Variables](#5-variables)
-6. [Pipeline — standalone](#6-pipeline--standalone)
-7. [Pipeline — with buildah-master-versions (optional)](#7-pipeline--with-buildah-master-versions-optional)
-8. [Examples](#8-examples)
+6. [Cross-referencing with changed-files](#6-cross-referencing-with-changed-files)
+7. [Pipeline — standalone](#7-pipeline--standalone)
+8. [Pipeline — with buildah-master-versions (optional)](#8-pipeline--with-buildah-master-versions-optional)
+9. [Examples](#9-examples)
+
 
 ---
 
@@ -70,6 +72,7 @@ When a part is bumped, all lower parts reset to `0`.
 | `fix` | Patch | Bug fix, crash fix |
 | `breaking` | Major | Backwards-incompatible change |
 | `other` | None | Explicit no-op — no release, useful as a continuation stopper |
+| `code_description` | None | Code-level description update (comments, docstrings) — no release, skip=true |
 | `!` after `]` | Major | Forces major regardless of type — e.g. `fix[nati]!: msg` |
 
 > A type not listed in `cliff.toml` `commit_parsers` is silently ignored. See `DETAILEDREADME.md` to understand how to add types.
@@ -135,6 +138,24 @@ other[nati]: stop                ← ends continuation, no release entry
 fix[check]: separate fix         ← new commit, clean start
 ```
 
+**Unknown type (not in `cliff.toml`) becomes continuation, not a new commit:**
+
+A line only opens a new commit if its type matches a `commit_parsers` pattern. If the type is unknown, `_match_line` returns nothing and the line is absorbed into the body of the preceding commit — even if it looks like a commit line.
+
+```
+feat[plugins/nati]: checking non cliff.toml word
+checkcheck[plugins/nati]: should be continuation
+```
+
+`checkcheck` is not in `cliff.toml` `commit_parsers` → `_match_line` returns nothing → the line is **not** treated as a new commit. It becomes continuation body of the `feat` line above. The commit passed to git-cliff is:
+
+```
+feat: checking non cliff.toml word
+checkcheck[plugins/nati]: should be continuation
+```
+
+Both lines land in `plugins/nati/CHANGELOG.md` under the same entry. `checkcheck[...]` is preserved verbatim in the changelog body.
+
 ---
 
 ## 3. Wildcard expansion
@@ -197,25 +218,81 @@ feat[nati, harel]: auth update     → ACCEPT (both have 0 slashes)
 
 | Variable | Description |
 |----------|-------------|
-| `PLUGIN_MESSAGE_FILE` | Path to a file containing the text to parse. Usually the PR body written to disk by CI. The file can contain any mix of prose and commit lines — only commit lines trigger a release. |
 | `PLUGIN_BASE_PATH` | Root directory all `[location]` paths are resolved against. Getting this wrong silently breaks tag names, CHANGELOG paths, and directory resolution. When in doubt use `"."` and write full relative paths in `[]`. |
 | `PLUGIN_CHANGELOG_LEVEL` | Enforces the expected path depth of every `[location]`. Lines with non-matching depth are skipped. If not set the plugin exits with code 1. |
+
+### Message retrieval
+
+The plugin retrieves the message to parse itself — there's no file-path input for it. It dispatches on `CI_PIPELINE_EVENT` (a Woodpecker-provided variable, not user-set):
+
+| `CI_PIPELINE_EVENT` | Source | Required variables |
+|---|---|---|
+| `pull_request` | Fetched from the Bitbucket Server REST API (`GET .../pull-requests/{id}`), using the PR's `description` field. | `PLUGIN_BITBUCKET_TOKEN`, `CI_FORGE_URL`, `CI_REPO_OWNER`, `CI_REPO_NAME`, `CI_COMMIT_PULL_REQUEST` |
+| `manual` (default) | The `PLUGIN_MESSAGE` env var, used as-is. | `PLUGIN_MESSAGE` |
+| any other event (e.g. `push`) | `git log -1 --pretty=%B`. If the commit message contains a `DESCRIPTION` section (the custom merge-commit template — see the "Pipeline Integration" notes), only the text after that marker is used; otherwise the full commit message is used. | *(none — reads local git history)* |
+
+The plugin exits with code 1 if the message can't be determined (e.g. a missing required variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is retrieved is also written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
 
 ### Optional
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to write created tags to — one per line. Always created/truncated at startup even if no tags are produced. Consumed by `buildah-master-versions` when building Docker images. |
+| `PLUGIN_OUTPUT_LOCATIONS_FILE` | `""` | File to write all accepted locations to — one per line, sorted. Always created/truncated at startup (empty if nothing qualifies). A location appears here only when **both** conditions are met: (1) the line starts with a type defined in `cliff.toml` `commit_parsers` (including `skip=true` types such as `other` and `code_description`) followed immediately by `[`, and (2) the location inside `[]` matches `PLUGIN_CHANGELOG_LEVEL`. Lines that fail either check are silently excluded. Example with `PLUGIN_CHANGELOG_LEVEL=2`: `other[natnat]: msg` is excluded (0 slashes, level expects 1); `other[plugins/natnat]: msg` is included (1 slash, passes level 2). Useful for cross-referencing against actually-changed directories; see [section 6](#6-cross-referencing-with-changed-files). |
 | `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | Python regex applied to every location before processing. Any matching location is skipped. Example: `^docs$\|^scripts$`. |
 | `PLUGIN_VERBOSE` | `0` | `0` = minimal output, `1` = show git-cliff commands, `2` = full trace including stderr. |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version used for the first release of a component with no existing tag. |
-| `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prefix version with `v` — `nati-v1.0.0` instead of `nati-1.0.0`. |
-| `PLUGIN_PRERELEASE` | `""` | Pre-release identifier appended to every calculated tag. E.g. `alpha.1` → `nati-v1.1.0-alpha.1`, `rc.2` → `nati-v1.1.0-rc.2`. The identifier is appended verbatim after a `-` separator. |
+| `PLUGIN_V_PREFIX` | `"true"` | `"true"` → tags use `v` prefix (`nati-v1.0.0`). Set to `"false"` to disable — `nati-1.0.0`. |
 | `PLUGIN_CLIFF_TOML` | *(bundled)* | Path to a custom `cliff.toml`. Resolution order: (1) this variable, (2) `./cliff.toml` in working dir, (3) bundled copy in the image. |
 
 ---
 
-## 6. Pipeline — standalone
+## 6. Cross-referencing with changed-files
+
+`PLUGIN_OUTPUT_LOCATIONS_FILE` writes every accepted location as a sorted, newline-separated list. Because it captures all qualifying locations — including those whose commit type is `skip=true` in `cliff.toml` (e.g. `other`, `code_description`) — it acts as a full scope manifest of everything the PR author claimed to touch, regardless of whether a release was produced.
+
+The [`changed-files`](../changed-files/) plugin writes the set of directories that actually changed in the push. The [`master-versions-vs-changed-files`](../master-versions-vs-changed-files/) plugin then compares the two and reports mismatches:
+
+- **Changed but not declared** — a directory changed on disk but no `[location]` in the PR body covers it
+- **Declared but not changed** — a `[location]` appears in the PR body but no files under it actually changed
+
+```yaml
+steps:
+  - name: Fetch PR body
+    image: alpine/curl
+    commands:
+      - curl -s $GITEA_API/repos/$CI_REPO/pulls/$CI_COMMIT_PULL_REQUEST
+          | jq -r '.body' > pr_body.txt
+
+  - name: Get changed dirs
+    image: netanelzucaim123/changed-files:latest
+    settings:
+      output_file: changed_dirs.txt
+      output_type: dirs
+      folder_depth: 1
+
+  - name: Run release
+    image: netanelzucaim123/master-versions:latest
+    settings:
+      message_file: pr_body.txt
+      base_path: .
+      changelog_level: 1
+      output_tags_file: new_tags.txt
+      output_locations_file: release_locations.txt
+
+  - name: Check scopes vs changes
+    image: netanelzucaim123/master-versions-vs-changed-files:latest
+    settings:
+      master_versions_locations_file: release_locations.txt
+      changed_dirs_file: changed_dirs.txt
+      fail_on_mismatch: false
+```
+
+> Set `fail_on_mismatch: true` to fail the pipeline when the PR description and the actual changed directories do not match exactly.
+
+---
+
+## 7. Pipeline — standalone
 
 Use `master-versions` on its own when you only need versioning and changelogs — no Docker image builds involved.
 
@@ -247,7 +324,7 @@ steps:
 
 ---
 
-## 7. Pipeline — with buildah-master-versions (optional)
+## 8. Pipeline — with buildah-master-versions (optional)
 
 > **Only add this step if your repository contains Dockerfiles you want to build and push.**
 > If you only do versioning and changelogs, the previous section is all you need.
@@ -257,7 +334,7 @@ When each component has a `Dockerfile`, `buildah-master-versions` reads the tags
 ```
 master-versions                         buildah-master-versions
 ──────────────────────────────          ──────────────────────────────────────────
-parse PLUGIN_MESSAGE_FILE               reads new_tags.txt line by line
+parse retrieved message                 reads new_tags.txt line by line
   → nati-1.1.0                     ──►  nati-1.1.0       → PLUGIN_BASE_PATH/nati/Dockerfile
   → plugins-docker-2.0.0           ──►  plugins-docker-2.0.0 → PLUGIN_BASE_PATH/plugins/docker/Dockerfile
 appended to new_tags.txt                builds and pushes each image via buildah
@@ -303,7 +380,7 @@ steps:
 
 ---
 
-## 8. Examples
+## 9. Examples
 
 ### Single component — minor bump
 
@@ -382,6 +459,7 @@ feat[nati]: add avatar upload
 fix[plugins/docker]: lock shared map access
 breaking[base/argo]!: rename all env vars to SNAKE_CASE
 other[]: explicit no-op at root
+code_description[nati]: improve inline comments
 
 This is a checklist:
 - [x] Tests pass
@@ -389,8 +467,8 @@ This is a checklist:
 ```
 
 Result:
-- `nati` → minor bump
+- `nati` → minor bump (`feat` wins; `code_description` is skip=true and adds no release on its own)
 - `plugins/docker` → patch bump
 - `base/argo` → major bump (`breaking` + `!`)
-- root → no release (`other` is skip type)
+- root → no release (`other` is skip=true)
 - Checklist lines → continuation of `other[]` → also skipped

@@ -28,6 +28,9 @@ set -euo pipefail
 #                            NOT set by default — only the exact version tag is pushed.
 #                            e.g. "latest"       → also push :latest
 #                            e.g. "prod,staging" → also push :prod and :staging
+#   PLUGIN_TAG_SUFFIX      — appended verbatim to the version before push.
+#                            e.g. "-abc123" → :v1.2.0-abc123
+#                            e.g. "_rc1"    → :v1.2.0_rc1
 #   PLUGIN_DRY_RUN         — "true" → build only, no push
 #   PLUGIN_LOG_LEVEL       — buildah log verbosity (default: info)
 #                            Available values: panic, fatal, error, warn, info, debug, trace
@@ -147,6 +150,7 @@ build_image() {
     local dockerfile_name="${PLUGIN_DOCKERFILE:-Dockerfile}"
     local log="${PLUGIN_LOG_LEVEL:-info}"
     local aliases="${PLUGIN_ALIASES:-}"
+    local tag_suffix="${PLUGIN_TAG_SUFFIX:-}"
 
     local tls_verify="true"
     [ "${PLUGIN_SKIP_TLS_VERIFY:-}" = "true" ] && tls_verify="false"
@@ -168,17 +172,18 @@ build_image() {
         image_base="${registry}${repo:+/${repo}}/${rel_path}"
     fi
 
-    local version_tag="${image_base}:${version}"
+    local version_tag="${image_base}:${version}${tag_suffix}"
 
     yecho "================================================================"
     yecho "Component : ${rel_path}"
-    yecho "Version   : ${version}"
+    yecho "Version   : ${version}${tag_suffix}"
+    yecho "Suffix    : ${tag_suffix:-(none)}"
     yecho "Aliases   : ${aliases:-(none)}"
     yecho "Isolation : rootless"
     yecho "Log level : ${log}"
     yecho "Context   : ${context}"
     yecho "Dockerfile: ${context}/${dockerfile_name}"
-    yecho "Image     : ${version_tag}"
+    yecho ">>> Generated tag : ${version_tag}"
     [ "${PLUGIN_DRY_RUN:-}" = "true" ] && yecho "  (dry-run — build only, no push)"
     yecho "================================================================"
 
@@ -190,12 +195,12 @@ build_image() {
         "${context}"
 
     if [ "${PLUGIN_DRY_RUN:-}" = "true" ]; then
-        yecho "Dry-run: skipping push for ${version_tag}" >&2
+        yecho ">>> Dry-run: would push ${version_tag}" >&2
         return 0
     fi
 
     buildah push --tls-verify="${tls_verify}" "${version_tag}"
-    yecho "Pushed: ${version_tag}" >&2
+    yecho ">>> Pushed: ${version_tag}" >&2
 
     if [ -n "${aliases}" ]; then
         local alias_tag
@@ -205,7 +210,7 @@ build_image() {
             local full_alias="${image_base}:${alias_tag}"
             buildah tag "${version_tag}" "${full_alias}"
             buildah push --tls-verify="${tls_verify}" "${full_alias}"
-            yecho "Pushed alias: ${full_alias}" >&2
+            yecho ">>> Pushed alias: ${full_alias}" >&2
         done << ALIASES
 $(printf '%s' "${aliases}" | tr ',' '\n')
 ALIASES
@@ -216,7 +221,15 @@ run() {
     local base="${PLUGIN_BASE_PATH}"
 
     local tags_input=""
-    if [ -n "${PLUGIN_TAGS_FILE:-}" ] && [ -f "${PLUGIN_TAGS_FILE}" ]; then
+    if [ -n "${PLUGIN_TAGS_FILE:-}" ]; then
+        if [ ! -f "${PLUGIN_TAGS_FILE}" ]; then
+            yecho "Tags file '${PLUGIN_TAGS_FILE}' does not exist — nothing to build." >&2
+            return 0
+        fi
+        if [ ! -s "${PLUGIN_TAGS_FILE}" ]; then
+            yecho "Tags file '${PLUGIN_TAGS_FILE}' is empty — nothing to build." >&2
+            return 0
+        fi
         yecho "Reading tags from file: ${PLUGIN_TAGS_FILE}" >&2
         tags_input="$(cat "${PLUGIN_TAGS_FILE}")"
     else

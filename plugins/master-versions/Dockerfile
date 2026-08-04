@@ -9,6 +9,3 @@ COPY cliff.toml /app/cliff.toml
 
 ENTRYPOINT ["python3", "/app/release.py"]
 
-
-
-

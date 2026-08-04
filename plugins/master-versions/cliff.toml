@@ -10,7 +10,7 @@ commit_parsers = [
   { message = "^fix",      group = "🐛 Bug Fixes" },
  # other - SKIPPED
   { message = "^other", group = "📦 other",skip = true },
-  { message = "^docs_code", group = "📦 docs code",skip = true }
+  { message = "^code_description", group = "📦 code description",skip = true }
 
 ]
 [bump]

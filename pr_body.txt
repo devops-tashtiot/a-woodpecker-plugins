@@ -1,5 +1,5 @@
 feat[plugins/changed-files,plugins/lagziel,plugins/nati]: check
-other[]: checking
-docs_code[plugins/changed-files]: checkkkk
+other[checking]: checking
+docs_code[plugins/changed-files,plugins/yoni]: checkkkk
 feat[plugins/master-versions,plugins/docs2confluence]: check
 feat[plugins/buildah-master-versions]: check

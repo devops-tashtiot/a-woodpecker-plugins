@@ -1,9 +1,11 @@
+import json
 import subprocess
 import re
 import os
 import shlex
 import sys
 import tomllib
+from urllib.request import urlopen, Request
 
 
 def load_cliff_parsers(toml_path):
@@ -53,15 +55,6 @@ def run_command(command):
     return subprocess.run(command, shell=True, capture_output=True, text=True)
 
 
-def list_remote_tags(tag_glob):
-    """
-    Returns tags matching tag_glob from local git, sorted descending by version.
-    Uses git's built-in --sort=-version:refname so semver ordering is correct.
-    """
-    result = run_command(f"git tag -l '{tag_glob}' --sort=-version:refname")
-    return [t for t in result.stdout.strip().splitlines() if t]
-
-
 def _known_commit_types(parsers):
     """
     Returns the set of raw message patterns from cliff.toml commit_parsers.
@@ -91,9 +84,8 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
           feat[nati]!: add login  ->  feat!: add login
           feat[nati]: add login          ->  feat: add login
 
-    changelog_level (set[int] | None):
+    changelog_level (int | None):
       Enforces the expected depth of every location in the PR body.
-      Accepts a set of levels — any location matching at least one level passes.
         level 0  -> only root (empty bracket []) is accepted
         level N  -> locations with exactly N-1 forward slashes:
                     1 -> "nati"           (0 slashes)
@@ -138,15 +130,17 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
         return None
 
     def _matches_level(location):
-        """Returns True if location satisfies any of the required changelog levels."""
+        """Returns True if location satisfies the required changelog_level."""
         if changelog_level is None:
             return True
-        if "" in location.split("/") and location != "":
+        if changelog_level == 0:
+            return location == ""
+        if location == "":
             return False
-        return any(
-            location == "" if lvl == 0 else (location != "" and location.count("/") == lvl - 1)
-            for lvl in changelog_level
-        )
+        # Reject empty segments: leading /, trailing /, or consecutive //
+        if "" in location.split("/"):
+            return False
+        return location.count("/") == changelog_level - 1
 
     result = {}
     lines = body.splitlines() if body else []
@@ -164,9 +158,10 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
             failed = [loc for loc in locations if not _matches_level(loc)]
             if failed:
                 def _level_reason(loc):
-                    levels_str = ",".join(str(l) for l in sorted(changelog_level))
+                    if changelog_level == 0:
+                        return f"'{loc}' — non-empty location, level 0 expects empty []"
                     if loc == "":
-                        return f"'' — empty location not accepted by PLUGIN_CHANGELOG_LEVEL={levels_str}"
+                        return f"'' — empty location, a component name is required at level {changelog_level}"
                     segments = loc.split("/")
                     if "" in segments:
                         if loc.startswith("/"):
@@ -175,13 +170,13 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
                             return f"'{loc}' — trailing slash, missing component name after last '/'"
                         return f"'{loc}' — consecutive '//', missing component name between slashes"
                     actual = loc.count("/")
-                    examples = " or ".join(
-                        f"'{'/'.join(['component'] * l)}'" for l in sorted(changelog_level) if l > 0
-                    )
+                    expected_slashes = changelog_level - 1
                     return (
-                        f"'{loc}' — wrong depth: {actual + 1} segment(s), "
-                        f"PLUGIN_CHANGELOG_LEVEL={levels_str} accepts {sorted(changelog_level)}. "
-                        f"Valid examples: {examples}"
+                        f"'{loc}' — wrong depth: location has {actual} slash(es) ({actual + 1} path segment(s)), "
+                        f"but PLUGIN_CHANGELOG_LEVEL={changelog_level} requires exactly {expected_slashes} slash(es) "
+                        f"({changelog_level} path segment(s)). "
+                        f"Example of a valid location at level {changelog_level}: "
+                        f"{'/'.join(['component'] * changelog_level)}"
                     )
 
                 reasons = "; ".join(_level_reason(loc) for loc in failed)
@@ -283,6 +278,39 @@ def _expand_locations(location_to_commits, root_path, exclude_regex=""):
     return result
 
 
+def _bump_subject(commit):
+    """
+    Subject line used for bump-level detection. If the subject has no
+    description after the type/colon (e.g. 'feat:' with the real text on
+    the next line), the first non-blank continuation line is folded in
+    instead — otherwise git-cliff sees a bare 'feat:' and silently falls
+    back to a patch bump. A subject that already has real text after the
+    colon (e.g. 'feat: real subject') is left as-is, unchanged.
+    """
+    lines = commit.splitlines()
+    subject = lines[0]
+    if re.search(r':\s*$', subject):
+        for line in lines[1:]:
+            if line.strip():
+                return f"{subject} {line.strip()}"
+    return subject
+
+
+def _has_releasable_commits(commits, parsers):
+    """Returns True if at least one commit's subject matches a non-skip parser."""
+    for commit in commits:
+        subject = commit.splitlines()[0]
+        for p in parsers:
+            msg = p.get("message", "")
+            if not msg:
+                continue
+            if re.match(msg, subject):
+                if not p.get("skip", False):
+                    return True
+                break  # first-match-wins; this commit is skip=true
+    return False
+
+
 def _print_cliff_rules(parsers, bump_cfg, toml_path=None):
     """Prints the raw cliff.toml content and commit line structure examples."""
 
@@ -351,20 +379,81 @@ def _print_location_commits(location_to_commits):
             print("      " + commit.replace("\n", "\n      "))
 
 
+def _retrieve_pull_request_message():
+    """pull_request event -> fetch the PR description from the Bitbucket Server API."""
+    try:
+        token      = os.environ["PLUGIN_BITBUCKET_TOKEN"]
+        server_url = os.environ["CI_FORGE_URL"]
+        repo_owner = os.environ["CI_REPO_OWNER"]
+        repo_name  = os.environ["CI_REPO_NAME"]
+        pr_number  = os.environ["CI_COMMIT_PULL_REQUEST"]
+    except KeyError as e:
+        print(f">>> ERROR: missing {e} — required to fetch the PR description from Bitbucket.")
+        return None
+    api_url = f"{server_url}/rest/api/1.0/projects/{repo_owner}/repos/{repo_name}/pull-requests/{pr_number}"
+    print(f">>> [INFO] Fetching PR #{pr_number} from {api_url}")
+    try:
+        req = Request(api_url, headers={"Authorization": f"Bearer {token}"})
+        pr = json.loads(urlopen(req).read())
+    except Exception as e:
+        print(f">>> ERROR: could not fetch PR #{pr_number} from Bitbucket: {e}")
+        return None
+    print(f">>> [INFO] PR #{pr.get('id')} — title: {pr.get('title', '')}")
+    return pr.get("description", "")
+
+
+def _retrieve_manual_message():
+    """manual event -> use the PLUGIN_MESSAGE env var as-is."""
+    message = os.getenv("PLUGIN_MESSAGE", "")
+    if not message:
+        print(">>> ERROR: PLUGIN_MESSAGE is empty — required for a manual run.")
+        return None
+    print(">>> [INFO] Using PLUGIN_MESSAGE env var directly")
+    return message
+
+
+def _retrieve_push_message():
+    """
+    Any other event -> assume a push carrying a PR merge commit, and extract
+    the DESCRIPTION section from `git log -1 --pretty=%B` (see
+    INCIDENT_PULL_REQUEST_CLOSED_TRAP.md for why a push event, not
+    pull_request_closed, is used to detect a merge).
+    """
+    result = run_command("git log -1 --pretty=%B")
+    message = result.stdout
+    marker = "DESCRIPTION"
+    if marker in message:
+        return message.split(marker, 1)[1].strip()
+    print(f">>> WARNING: no '{marker}' section found in commit message — using the full message as-is")
+    return message.strip()
+
+
+def _retrieve_message():
+    """
+    Determines the release message. Dispatches on CI_PIPELINE_EVENT. Returns
+    the message string, or None if it could not be determined (an error has
+    already been printed).
+    """
+    event = os.getenv("CI_PIPELINE_EVENT", "manual")
+    print(f">>> [INFO] Retrieving message directly (CI_PIPELINE_EVENT={event})")
+
+    match event:
+        case "pull_request":
+            return _retrieve_pull_request_message()
+        case "manual":
+            return _retrieve_manual_message()
+        case _:
+            return _retrieve_push_message()
+
+
 def release():
     # ── Validate required env vars ────────────────────────────────────────────
     missing = []
     if not os.getenv("PLUGIN_CHANGELOG_LEVEL"):
         missing.append(
-            "  PLUGIN_CHANGELOG_LEVEL — depth(s) of component locations in your PR body.\n"
-            "    Single:   PLUGIN_CHANGELOG_LEVEL=1  (only feat[nati]: ...)\n"
-            "    Multiple: PLUGIN_CHANGELOG_LEVEL=1,2 (feat[nati]: ... and feat[plugins/docker]: ...)\n"
-            "    Level 0 -> root only: feat[]   Level 1 -> top-level: feat[nati]   Level 2 -> feat[plugins/docker]"
-        )
-    if not os.getenv("PLUGIN_MESSAGE_FILE"):
-        missing.append(
-            "  PLUGIN_MESSAGE_FILE — path to the file containing the PR/commit message.\n"
-            "    Example: PLUGIN_MESSAGE_FILE=pr_body.txt"
+            "  PLUGIN_CHANGELOG_LEVEL — integer depth of component locations in your PR body.\n"
+            "    Level 0 -> root only: feat[][...]   Level 1 -> top-level: feat[nati][...]\n"
+            "    Level 2 -> nested:    feat[plugins/docker][...]   Example: PLUGIN_CHANGELOG_LEVEL=1"
         )
     if not os.getenv("PLUGIN_BASE_PATH"):
         missing.append(
@@ -379,29 +468,32 @@ def release():
 
     # ── Load env vars ─────────────────────────────────────────────────────────
     try:
-        changelog_level = {int(x.strip()) for x in os.getenv("PLUGIN_CHANGELOG_LEVEL").split(",")}
+        changelog_level = int(os.getenv("PLUGIN_CHANGELOG_LEVEL"))
     except (TypeError, ValueError):
-        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be one or more non-negative integers (e.g. 1 or 1,2).")
+        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be a non-negative integer (e.g. 1).")
         return
 
-    message_file = os.getenv("PLUGIN_MESSAGE_FILE")
-    try:
-        with open(message_file) as _f:
-            pr_body = _f.read()
-    except OSError as e:
-        print(f">>> ERROR: Cannot read PLUGIN_MESSAGE_FILE='{message_file}': {e}")
-        return
+    pr_body = _retrieve_message()
+    if pr_body is None:
+        sys.exit(1)
+    # Write the retrieved message out to pr_body.txt so later steps in the
+    # same pipeline workspace (which grep it for override values like
+    # PLUGIN_BASE_PATH) keep working without needing a separate fetch step.
+    with open("pr_body.txt", "w") as _f:
+        _f.write(pr_body)
     root_path           = os.getenv("PLUGIN_BASE_PATH")
-    output_tags_file    = os.getenv("PLUGIN_OUTPUT_TAGS_FILE", "")
+    output_tags_file      = os.getenv("PLUGIN_OUTPUT_TAGS_FILE", "")
+    output_locations_file = os.getenv("PLUGIN_OUTPUT_LOCATIONS_FILE", "")
     if output_tags_file:
         open(output_tags_file, "w").close()
+    if output_locations_file:
+        open(output_locations_file, "w").close()
     exclude_regex       = os.getenv("PLUGIN_SCOPE_EXCLUDE_REGEX", "")
     try:
         verbose = int(os.getenv("PLUGIN_VERBOSE", "0"))
     except ValueError:
         verbose = 0
     initial_tag_version = os.getenv("PLUGIN_INITIAL_TAG", "1.0.0").lstrip("v")
-    prerelease          = os.getenv("PLUGIN_PRERELEASE", "").strip()
     version_prefix      = "v" if os.getenv("PLUGIN_V_PREFIX", "true").lower() == "true" else ""
 
     _bundled_toml = os.path.join(os.path.dirname(__file__), "cliff.toml")
@@ -417,7 +509,7 @@ def release():
 
     _print_cliff_rules(parsers, bump_cfg, global_toml)
 
-    print(f">>> PLUGIN_CHANGELOG_LEVEL={','.join(str(l) for l in sorted(changelog_level))}")
+    print(f">>> PLUGIN_CHANGELOG_LEVEL={changelog_level}")
     print(f">>> PLUGIN_BASE_PATH='{root_path}' — root directory; all [location] paths are resolved relative to this")
 
     # ── Parse PR body ─────────────────────────────────────────────────────────
@@ -437,6 +529,12 @@ def release():
         print(">>> No components to release after expansion/filtering.")
         return
 
+    if output_locations_file:
+        with open(output_locations_file, "w") as f:
+            for loc in sorted(location_to_commits):
+                f.write(f"{loc}\n")
+        print(f">>> [INFO] Locations written to '{output_locations_file}': {sorted(location_to_commits)}")
+
     if had_wildcards:
         print("\033[1;4;33m>>> COMMITS AFTER WILDCARD EXPANSION:\033[0m")
         print("\033[33m    Wildcards replaced with concrete component paths.\033[0m")
@@ -445,6 +543,34 @@ def release():
             print(f"    [{display_loc}]")
             for commit in sorted(location_to_commits[loc]):
                 print("      " + commit.replace("\n", "\n      "))
+
+    # ── Resolve branch for ancestry-correct tag lookup ────────────────────────
+    # A plain `git fetch` (no --tags/--no-tags) auto-follows a tag only if its
+    # target commit is already present locally as a result of that fetch — this
+    # is what keeps tag lookups scoped to the right line of history instead of
+    # picking up tags from unrelated branches. The clone step's own `tags:`
+    # setting can persist as remote.origin.tagOpt and silently block this, so
+    # it's reset here regardless of what the CI clone step configured.
+    run_command("git config --unset-all remote.origin.tagOpt")
+
+    is_pr = os.getenv("CI_PIPELINE_EVENT") == "pull_request"
+    resolve_branch = os.getenv("CI_COMMIT_TARGET_BRANCH") if is_pr else os.getenv("CI_COMMIT_BRANCH")
+
+    # Always fetch into an explicit refs/remotes/origin/<branch> destination —
+    # even for the branch already checked out. Tag auto-follow only fires
+    # during an actual fetch negotiation; having the commit data already
+    # present locally (e.g. via a depth:0 clone) is not enough on its own, and
+    # a plain re-fetch of an already-tracked ref is treated as a no-op that
+    # skips tag auto-follow entirely. An explicit destination refspec forces
+    # a real negotiation, which is what attaches the correct tag.
+    resolved_ref = "HEAD"
+    if resolve_branch:
+        fetch_result = run_command(f"git fetch origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
+        if fetch_result.returncode == 0:
+            resolved_ref = f"refs/remotes/origin/{resolve_branch}"
+            print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")
+        else:
+            print(f">>> WARNING: could not fetch branch '{resolve_branch}' ({fetch_result.stderr.strip()}) — falling back to HEAD")
 
     # ── Process each location ─────────────────────────────────────────────────
     created_tags = []
@@ -458,15 +584,13 @@ def release():
             path_slug             = ""
             tag_prefix            = version_prefix
             tag_glob              = f"{version_prefix}[0-9]*"
-            stable_tag_pattern    = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
-            component_tag_pattern = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+"
+            component_tag_pattern = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
             full_path             = os.path.normpath(root_path)
         else:
             path_slug             = location.replace("/", "-").replace("\\", "-")
             tag_prefix            = f"{path_slug}-{version_prefix}"
             tag_glob              = f"{path_slug}-{version_prefix}[0-9]*"
-            stable_tag_pattern    = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
-            component_tag_pattern = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+"
+            component_tag_pattern = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
             full_path             = os.path.normpath(os.path.join(root_path, location))
 
         display_name = location if location else "(root)"
@@ -478,50 +602,39 @@ def release():
             print(f">>> SKIP: Directory '{location}' does not exist.")
             continue
 
-        # ── STEP 1: FIND LATEST STABLE TAG ───────────────────────────────────
-        all_matching_tags = list_remote_tags(tag_glob)
-        # Only exact X.Y.Z tags count as a stable base
-        latest_stable_tag = next(
-            (t for t in all_matching_tags if re.match(stable_tag_pattern, t)),
-            None
-        )
+        # ── STEP 1: FIND EXISTING TAGS ────────────────────────────────────────
+        existing_tags_result = run_command(f"git describe --tags --abbrev=0 --match '{tag_glob}' {resolved_ref}")
+        latest_tag = existing_tags_result.stdout.strip() or None
 
         print(f">>> [INFO] Tag glob:          '{tag_glob}'")
         first_tag = f"{tag_prefix}{initial_tag_version}"
-        print(f">>> [INFO] Latest stable tag: "
-              f"{latest_stable_tag or f'(none — first release → will use {first_tag})'}")
+        print(f">>> [INFO] Latest tag (base): "
+              f"{latest_tag or f'(none — first release → will use {first_tag})'}")
 
         # Build --with-commit args (shell-safe quoting handles special chars)
         all_commits = sorted(commits)
         with_commit_args = " ".join(f"--with-commit {shlex.quote(c)}" for c in all_commits)
-        # For bump calculation only, pass only the first line (subject) of each commit.
-        # git-cliff with conventional_commits=false applies [bump] rules
-        # (custom_minor_increment_regex, custom_major_increment_regex) against the commit
-        # subject. When a commit has a body attached without a blank-line separator(
-        # as usual conventional commit should be looked),
-        # git-cliff fails to isolate the subject and falls back to a patch bump regardless
-        # of the regex it matched.... Stripping to the first line fixes this — the subject alone
-        # is sufficient to determine the bump level. The full multiline string is still
-        # passed to the changelog command where the body content is needed.
+        # For bump calculation only, pass only the subject of each commit (see
+        # _bump_subject). git-cliff with conventional_commits=false applies
+        # [bump] rules (custom_minor_increment_regex, custom_major_increment_regex)
+        # against the commit subject. When a commit has a body attached without
+        # a blank-line separator (as usual conventional commit should be looked),
+        # git-cliff fails to isolate the subject and falls back to a patch bump
+        # regardless of the regex it matched.... Reducing to just the subject
+        # fixes this — it alone is sufficient to determine the bump level. The
+        # full multiline string is still passed to the changelog command where
+        # the body content is needed.
         bump_commit_args = " ".join(
-            f"--with-commit {shlex.quote(c.splitlines()[0])}" for c in all_commits
+            f"--with-commit {shlex.quote(_bump_subject(c))}" for c in all_commits
         )
 
         print(f">>> [INFO] Commits: {all_commits}")
 
         # ── STEP 2: CALCULATE VERSION ─────────────────────────────────────────
-        # Always calculate next_stable_tag first, then branch on prerelease.
-        # This ensures series continuity: prerelease always bases off the would-be
-        # stable bump, ignoring any stale prerelease tags at a lower base version.
-        # cliff_tag_pattern tracks which pattern to use for CHANGELOG generation (STEP 3)
-        next_stable_tag = None
-        if latest_stable_tag:
-            # Must use stable_tag_pattern (ends with $) so git-cliff only sees exact
-            # X.Y.Z tags — without $, prerelease tags like v1.2.0-alpha.2 would match
-            # the prefix and git-cliff would bump from there instead of v1.1.0.
+        if latest_tag:
             bump_cmd = " ".join(filter(None, [
                 cliff_cmd_base,
-                f"--tag-pattern '{stable_tag_pattern}'",
+                f"--tag-pattern '{component_tag_pattern}'",
                 "--bump --bumped-version",
                 bump_commit_args,
                 "-- HEAD..HEAD",
@@ -537,74 +650,24 @@ def release():
                 for line in bumped.stderr.strip().splitlines():
                     print(f"    {line}")
 
-            next_stable_tag = bumped.stdout.strip()
-            if not next_stable_tag or next_stable_tag == latest_stable_tag:
+            new_tag = bumped.stdout.strip()
+            if not new_tag:
                 print(f">>> SKIP: no releasable commits for {display_name}")
                 continue
 
-            print(f">>> [INFO] Next stable tag would be: {next_stable_tag}")
+            if new_tag == latest_tag:
+                print(f">>> SKIP: bumped version equals latest tag ({latest_tag}) — no releasable commits for {display_name}")
+                continue
 
-
-        if not prerelease:
-            # Stable release
-            new_tag = next_stable_tag or first_tag
-            if not next_stable_tag:
-                print(f">>> [INFO] No existing tag — first stable release: {new_tag}")
-            else:
-                print(f">>> [INFO] Calculated new_tag: {new_tag}")
-            cliff_tag_pattern = stable_tag_pattern
-
+            print(f">>> [INFO] Calculated new_tag: {new_tag}")
         else:
-            # Prerelease — always base off the would-be stable, never off stale prerelease
-            # tags at a lower base version (e.g. stable=v1.3.0 + feat → base=v1.4.0,
-            # ignoring any existing v1.2.0-alpha.N tags).
-            escaped_pr = re.escape(prerelease)
-            base_for_pr = next_stable_tag or first_tag
-
-            # Look ONLY at prerelease tags in this exact series (base-channel or base-channel.N)
-            pr_series_glob = f"{base_for_pr}-{prerelease}*"
-            pr_series_pattern = f"^{re.escape(base_for_pr)}-{escaped_pr}($|\\.[0-9]+$)"
-            pr_series_tags = list_remote_tags(pr_series_glob)
-            latest_in_series = next(
-                (t for t in pr_series_tags if re.match(pr_series_pattern, t)),
-                None,
-            )
-
-            print(f">>> [INFO] Prerelease base: {base_for_pr}, series glob: '{pr_series_glob}'")
-            print(f">>> [INFO] Latest in series: {latest_in_series or '(none — first in series)'}")
-
-            if latest_in_series:
-                # git-cliff bumps the counter within this exact series
-                bump_cmd = " ".join(filter(None, [
-                    cliff_cmd_base,
-                    f"--tag-pattern '{pr_series_pattern}'",
-                    "--bump --bumped-version",
-                    bump_commit_args,
-                    "-- HEAD..HEAD",
-                ]))
-                print(f">>> [VERBOSE] For bump calculation only, pass only the first line (subject) of each commit.")
-                print(f">>> [VERBOSE] bump_cmd: {bump_cmd}")
-
-                bumped = run_command(bump_cmd)
-
-                print(f">>> [VERBOSE] bump stdout: {bumped.stdout.strip()}")
-                if bumped.stderr.strip():
-                    print(">>> [VERBOSE] bump stderr:")
-                    for line in bumped.stderr.strip().splitlines():
-                        print(f"    {line}")
-
-                new_tag = bumped.stdout.strip()
-                if not new_tag or new_tag == latest_in_series:
-                    print(f">>> SKIP: no releasable commits for {display_name}")
-                    continue
-
-                print(f">>> [INFO] Calculated new_tag: {new_tag}")
-                cliff_tag_pattern = pr_series_pattern
-            else:
-                # First prerelease in this series — Python creates it, no counter
-                new_tag = f"{base_for_pr}-{prerelease}"
-                print(f">>> [INFO] First prerelease in series: {new_tag}")
-                cliff_tag_pattern = stable_tag_pattern
+            if not _has_releasable_commits(all_commits, parsers):
+                # Unlike git-cliff (which emits a fallback 0.1.0 tag with a "No releases found"
+                # warning), we intentionally skip — skip=true means not meant to trigger a release.
+                print(f">>> SKIP: no releasable commits for {display_name} (all commits are skip=true).")
+                continue
+            new_tag = f"{tag_prefix}{initial_tag_version}"
+            print(f">>> [INFO] No existing tag — first release: {new_tag}")
 
         # ── STEP 3: GENERATE CHANGELOG ────────────────────────────────────────
         changelog_path = os.path.join(full_path, "CHANGELOG.md")
@@ -617,7 +680,7 @@ def release():
 
         cliff_cmd = " ".join(filter(None, [
             cliff_cmd_base,
-            f"--tag-pattern '{cliff_tag_pattern}'",
+            f"--tag-pattern '{component_tag_pattern}'",
             f"--tag '{new_tag}'",
             with_commit_args,
             output_flag,
@@ -657,12 +720,6 @@ def release():
 
 if __name__ == "__main__":
     release()
-
-
-
-
-
-
 
 
 
