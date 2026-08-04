@@ -1,4 +1,4 @@
-FROM netanelzucaim123/python-git-cliff:latest
+FROM docker.io/netanelzucaim123/python-git-cliff:latest
 
 WORKDIR /app
 

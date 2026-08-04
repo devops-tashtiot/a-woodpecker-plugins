@@ -1,5 +1,5 @@
 # Use the latest busybox image
-FROM busybox:latest
+FROM docker.io/library/busybox:latest
 # This is what runs when Woodpecker starts the container
 ENTRYPOINT ["/aeqdeppeeeeedrrrgigdddidsdddfwefwefsfesfd/plugin.sh"]
 
