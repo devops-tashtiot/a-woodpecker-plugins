@@ -1,0 +1,106 @@
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      depth: 0
+      tags: false
+
+when:
+  - event: manual
+  - event: push
+    branch: main
+    evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'
+
+steps:
+  - name: Get changed dirs
+    image: netanelzucaim123/changed-files:latest
+    environment:
+      PLUGIN_OUTPUT_FILE: "changed_dirs.txt"
+      PLUGIN_OUTPUT_TYPE: "dirs"
+      PLUGIN_FOLDER_DEPTH: "2"
+      PLUGIN_DEDUP: "true"
+      PLUGIN_BASE_PATH: plugins
+
+  - name: Run release
+    image: netanelzucaim123/master-versions:latest
+    environment:
+      PLUGIN_BASE_PATH: "."
+      PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
+      PLUGIN_BITBUCKET_TOKEN:
+        from_secret: bitbucket_token
+      PLUGIN_MESSAGE: "${MESSAGE}"
+      GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
+      GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
+      PLUGIN_VERBOSE: 2
+      PLUGIN_CHANGELOG_LEVEL: 2
+      PLUGIN_OUTPUT_LOCATIONS_FILE: "locations.txt"
+    commands:
+      - |
+        for var in PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX PLUGIN_PRERELEASE; do
+          val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
+          if [ -n "$val" ]; then
+            export "$var=$val"
+            echo ">>> Override: $var=$val"
+          fi
+        done
+      - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
+      - python3 /app/release.py
+
+  - name: Release diff check
+    image: netanelzucaim123/master-versions-vs-changed-files:latest
+    environment:
+      PLUGIN_MASTER_VERSIONS_LOCATIONS_FILE: "locations.txt"
+      PLUGIN_CHANGED_DIRS_FILE: "changed_dirs.txt"
+      PLUGIN_FAIL_ON_MISMATCH: "true"
+
+  - name: Push changelogs to Git
+    image: alpine/git
+    environment:
+      PLUGIN_BASE_PATH: .
+      SCOPE_DEPTH: "1"
+    commands:
+      - |
+        for var in SCOPE_DEPTH PLUGIN_BASE_PATH; do
+          val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
+          if [ -n "$val" ]; then
+            export "$var=$val"
+            echo ">>> Override: $var=$val"
+          fi
+        done
+      - echo ">>> SCOPE_DEPTH=$SCOPE_DEPTH PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH"
+      - git config --global user.email "ci-bot@example.com"
+      - git config --global user.name "CI Bot"
+      - git config --global safe.directory '*'
+      - git remote set-url origin "http://ci-bot:48900285bf3075ce084699656ddf5ac7b88685a8@gitea-http.gitea.svc.cluster.local:3000/${CI_REPO}.git"
+      - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
+      - |
+        if ! git diff --cached --quiet; then
+          git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
+          git push --force origin HEAD:main
+        else
+          echo "No changelog changes to commit."
+        fi
+      - for tag in $(cat new_tags.txt); do git tag -f "$tag"; done
+      - git push --force --tags origin
+
+  - name: Build and push plugin images
+    image: netanelzucaim123/buildah-master-versions:latest
+    privileged: true
+    commands:
+      - |
+        val=$(grep -m 1 "^PLUGIN_BASE_PATH=" pr_body.txt | cut -d= -f2-)
+        if [ -n "$val" ]; then
+          export PLUGIN_BASE_PATH="$val"
+          echo ">>> Override: PLUGIN_BASE_PATH=$val"
+        fi
+      - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH"
+      - /app/plugin.sh
+    environment:
+      PLUGIN_BASE_PATH: "plugins"
+      PLUGIN_REGISTRY: "10.89.0.1:5000"
+      PLUGIN_REPO: ""
+      PLUGIN_TAGS_FILE: "new_tags.txt"
+      PLUGIN_INSECURE: "true"
+      PLUGIN_ALIASES: "prod"
+      PLUGIN_USERNAME: "local"
+      PLUGIN_PASSWORD: "local"

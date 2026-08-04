@@ -6,30 +6,9 @@ clone:
       tags: false
 
 when:
-  - event: [manual,pull_request]
-  - event: push
-    branch: main
-    evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'
+  - event: pull_request
 
 steps:
-  # - name: Test changed plugins
-  #   image: netanelzucaim123/python-git-cliff:latest
-  #   privileged: true
-  #   commands:
-  #     - git diff --name-only HEAD~1 HEAD | grep '^plugins/' | cut -d'/' -f1-2 | sort -u > changed_dirs.txt
-  #     - |
-  #       while IFS= read -r dir; do
-  #         [ -d "$dir/tests" ] || continue
-  #         for f in "$dir/tests/"*.py "$dir/tests/"*.sh; do
-  #           [ -f "$f" ] || continue
-  #           echo ">>> Running $f"
-  #           case "$f" in
-  #             *.py) python3 "$f" || exit 1 ;;
-  #             *.sh) sh "$f"      || exit 1 ;;
-  #           esac
-  #         done
-  #       done < changed_dirs.txt
-
   - name: Get changed dirs
     image: netanelzucaim123/changed-files:latest
     environment:
@@ -37,23 +16,7 @@ steps:
       PLUGIN_OUTPUT_TYPE: "dirs"
       PLUGIN_FOLDER_DEPTH: "2"
       PLUGIN_DEDUP: "true"
-      # PLUGIN_INCLUDE_FILES_REGEX: "^(plugins|base)"
-      # PLUGIN_EXCLUDE_FILES_REGEX: '\.md$|^plugins/(buildah-monorepo|buildah-master-versions|kaniko-monorepo)'
       PLUGIN_BASE_PATH: plugins
-  # - name: Build changed dirs
-  #   image: netanelzucaim123/buildah-monorepo:latest
-  #   privileged: true
-  #   environment:
-  #     PLUGIN_CHANGED_FILE: "changed_dirs.txt"
-  #     PLUGIN_REGISTRY: "10.89.0.1:5000"
-  #     PLUGIN_REPO: "check"
-  #     PLUGIN_INSECURE: "true"
-  #     PLUGIN_ALIASES: "latest"
-  #     PLUGIN_USERNAME: "local"
-  #     PLUGIN_PASSWORD: "local"
-  #   commands:
-  #     - export PLUGIN_TAGS="${CI_COMMIT_SHA:0:7}"
-  #     - /app/plugin.sh
 
   - name: Run release
     image: netanelzucaim123/master-versions:latest
@@ -79,18 +42,6 @@ steps:
         done
       - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
       - python3 /app/release.py
-
-
-  # - name: Annotate tags with commit hash
-  #   image: alpine
-  #   commands:
-  #     - sed -i "s/$/_${CI_COMMIT_SHA:0:7}/" new_tags.txt
-  #     - echo ">>> new_tags.txt after annotation:" && cat new_tags.txt
-
-  # - name: Compare changed dirs vs released tags
-  #   image: registry.access.redhat.com/ubi9/ubi-minimal:latest
-  #   commands:
-  #     - sh .woodpecker/compare_tags.sh
 
   - name: Release diff check
     image: netanelzucaim123/master-versions-vs-changed-files:latest
@@ -150,30 +101,3 @@ steps:
       PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "local"
       PLUGIN_PASSWORD: "local"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
