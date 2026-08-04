@@ -9,7 +9,9 @@ commit_parsers = [
  # fix - PATCH bump as usual conventional_commits
   { message = "^fix",      group = "🐛 Bug Fixes" },
  # other - SKIPPED
-  { message = "^other", group = "📦 other",skip = true }
+  { message = "^other", group = "📦 other",skip = true },
+  { message = "^docs_code", group = "📦 docs code",skip = true }
+
 ]
 [bump]
 custom_major_increment_regex = "^breaking"

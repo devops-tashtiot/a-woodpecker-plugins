@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Unit tests for plugins/kaniko-master-versions/plugin.sh
+# Unit tests for plugins/buildah-master-versions/plugin.sh
 #
 # Strategy
 # --------
-# No Docker, no kaniko, no registry required.
+# No Docker, no buildah daemon, no registry required.
 #
 # 1. Functions are loaded by sourcing plugin.sh through bash (stripping the
 #    busybox shebang on line 1 and the bare `main` call at EOF so main() is
@@ -21,7 +21,7 @@
 #    created fresh every run and cleaned up on exit.
 #
 # Usage:
-#   cd plugins/kaniko-master-versions && ./test_release_docker.sh
+#   cd plugins/buildah-master-versions && ./test_release_docker.sh
 # =============================================================================
 set -euo pipefail
 
@@ -91,7 +91,7 @@ source <(sed '1d;/^main$/d' "${PLUGIN_SH}")
 #     Dockerfile                               <- root image  (slug = "")
 #     plugins/
 #       master-versions/Dockerfile             <- slug  plugins-master-versions
-#       kaniko-master-versions/Dockerfile      <- slug  plugins-kaniko-master-versions
+#       buildah-master-versions/Dockerfile      <- slug  plugins-buildah-master-versions
 #     standalone/Dockerfile                    <- slug  standalone
 #     deep/nested/component/Dockerfile         <- slug  deep-nested-component
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,14 +108,14 @@ _mk_dockerfile() {
 
 _mk_dockerfile "${TMPWS}/Dockerfile"
 _mk_dockerfile "${TMPWS}/plugins/master-versions/Dockerfile"
-_mk_dockerfile "${TMPWS}/plugins/kaniko-master-versions/Dockerfile"
+_mk_dockerfile "${TMPWS}/plugins/buildah-master-versions/Dockerfile"
 _mk_dockerfile "${TMPWS}/standalone/Dockerfile"
 _mk_dockerfile "${TMPWS}/deep/nested/component/Dockerfile"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mock build_image
 #
-# Replaces the real build_image (which calls /kaniko/executor) with a stub
+# Replaces the real build_image (which calls buildah bud / buildah push) with a stub
 # that records each call as one line in BUILD_LOG:
 #   BUILD:path=<rel_path>,ver=<version>
 #
@@ -145,7 +145,7 @@ assert_eq "1.1 flat slug no v-prefix" \
     "$(extract_version 'nati-1.0.0')" "1.0.0"
 
 # 1.2 — Flat slug, v-prefix present.
-# The v must be included in the returned string because kaniko uses it
+# The v must be included in the returned string because buildah uses it
 # verbatim as the image tag.  Stripping it would push :2.3.1 instead of :v2.3.1.
 assert_eq "1.2 flat slug v-prefix preserved" \
     "$(extract_version 'nati-v2.3.1')" "v2.3.1"
@@ -158,7 +158,7 @@ assert_eq "1.3 nested slug no v-prefix" \
 
 # 1.4 — Nested slug with v-prefix.
 assert_eq "1.4 nested slug v-prefix" \
-    "$(extract_version 'plugins-kaniko-master-versions-v2.1.3')" "v2.1.3"
+    "$(extract_version 'plugins-buildah-master-versions-v2.1.3')" "v2.1.3"
 
 # 1.5 — Version-only tag (root release, no component prefix).
 # Empty brackets [] in master-versions produce a tag like "1.0.0" with no slug.
@@ -196,7 +196,7 @@ assert_eq "2.2 nested slug plugins-master-versions" \
 # 2.3 — Nested slug with v-prefix.
 # The v must not bleed into the slug; only the numeric part is the version.
 assert_eq "2.3 nested slug v-prefix does not bleed into slug" \
-    "$(extract_slug 'plugins-kaniko-master-versions-v2.1.3')" "plugins-kaniko-master-versions"
+    "$(extract_slug 'plugins-buildah-master-versions-v2.1.3')" "plugins-buildah-master-versions"
 
 # 2.4 — Version-only tag → empty slug.
 # When master-versions releases the repo root (location ""), the tag has no
@@ -236,9 +236,9 @@ export PLUGIN_BASE_PATH="${TMPWS}"
 assert_eq "3.1 plugins-master-versions -> plugins/master-versions" \
     "$(find_path_for_slug 'plugins-master-versions')" "plugins/master-versions"
 
-# 3.2 — Same logic for the kaniko plugin.
-assert_eq "3.2 plugins-kaniko-master-versions -> plugins/kaniko-master-versions" \
-    "$(find_path_for_slug 'plugins-kaniko-master-versions')" "plugins/kaniko-master-versions"
+# 3.2 — Same logic for the buildah plugin.
+assert_eq "3.2 plugins-buildah-master-versions -> plugins/buildah-master-versions" \
+    "$(find_path_for_slug 'plugins-buildah-master-versions')" "plugins/buildah-master-versions"
 
 # 3.3 — Flat slug at repo root level.
 assert_eq "3.3 standalone -> standalone" \
@@ -286,9 +286,9 @@ export PLUGIN_BASE_PATH="${TMPWS}/plugins"
 assert_eq "4.1 master-versions -> master-versions (base=plugins/)" \
     "$(find_path_for_slug 'master-versions')" "master-versions"
 
-# 4.2 — Same for kaniko variant.
-assert_eq "4.2 kaniko-master-versions -> kaniko-master-versions (base=plugins/)" \
-    "$(find_path_for_slug 'kaniko-master-versions')" "kaniko-master-versions"
+# 4.2 — Same for buildah variant.
+assert_eq "4.2 buildah-master-versions -> buildah-master-versions (base=plugins/)" \
+    "$(find_path_for_slug 'buildah-master-versions')" "buildah-master-versions"
 
 # 4.3 — Full slug (plugins-master-versions) must NOT match under plugins/ base.
 # Proves that changing PLUGIN_BASE_PATH actually changes the slug namespace and a
@@ -332,10 +332,10 @@ assert_contains "5.1 plugins-master-versions-1.0.0 routed correctly" \
 # The v must survive all the way to build_image so the image is pushed
 # as :v2.1.3, not :2.1.3.
 > "${BUILD_LOG}"
-export PLUGIN_TAGS="plugins-kaniko-master-versions-v2.1.3"
+export PLUGIN_TAGS="plugins-buildah-master-versions-v2.1.3"
 run 2>/dev/null
 assert_contains "5.2 v-prefix preserved through full pipeline" \
-    "$(cat "${BUILD_LOG}")" "BUILD:path=plugins/kaniko-master-versions,ver=v2.1.3"
+    "$(cat "${BUILD_LOG}")" "BUILD:path=plugins/buildah-master-versions,ver=v2.1.3"
 
 # 5.3 — Flat slug at repo root level.
 > "${BUILD_LOG}"
@@ -404,12 +404,12 @@ run 2>/dev/null
 assert_contains "6.1 master-versions-1.0.0 with base=plugins/" \
     "$(cat "${BUILD_LOG}")" "BUILD:path=master-versions,ver=1.0.0"
 
-# 6.2 — kaniko-master-versions via shallow base.
+# 6.2 — buildah-master-versions via shallow base.
 > "${BUILD_LOG}"
-export PLUGIN_TAGS="kaniko-master-versions-3.0.0"
+export PLUGIN_TAGS="buildah-master-versions-3.0.0"
 run 2>/dev/null
-assert_contains "6.2 kaniko-master-versions-3.0.0 with base=plugins/" \
-    "$(cat "${BUILD_LOG}")" "BUILD:path=kaniko-master-versions,ver=3.0.0"
+assert_contains "6.2 buildah-master-versions-3.0.0 with base=plugins/" \
+    "$(cat "${BUILD_LOG}")" "BUILD:path=buildah-master-versions,ver=3.0.0"
 
 # 6.3 — Full slug with wrong base must WARN, not build anything.
 # If a tag was generated with PLUGIN_BASE_PATH=. but the plugin runs with
@@ -530,13 +530,3 @@ printf ' Results: %d passed, %d failed\n' "${PASS}" "${FAIL}"
 echo "════════════════════════════════════════════"
 
 [ "${FAIL}" -eq 0 ]
-
-
-
-
-
-
-
-
-
-

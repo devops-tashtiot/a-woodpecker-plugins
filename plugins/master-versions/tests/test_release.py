@@ -707,7 +707,8 @@ class TestRelease(unittest.TestCase):
 
     def _run(self, message, dirs_exist=(), cliff_stdout="nati-1.1.0",
              cliff_returncode=0, cliff_stderr="", list_dirs=(),
-             exclude_regex="", output_tags_file="", changelog_level="1"):
+             exclude_regex="", output_tags_file="", changelog_level="1",
+             prerelease=""):
         """
         Helper: patches env vars and all filesystem/subprocess calls, then
         calls release() and returns the mock for run_command.
@@ -734,6 +735,7 @@ class TestRelease(unittest.TestCase):
             "PLUGIN_OUTPUT_TAGS_FILE":    output_tags_file,
             "PLUGIN_VERBOSE":             "0",
             "PLUGIN_CHANGELOG_LEVEL":     changelog_level,
+            "PLUGIN_PRERELEASE":          prerelease,
         }
 
         try:

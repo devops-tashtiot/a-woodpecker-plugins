@@ -1,13 +1,12 @@
-#!/busybox/busybox sh
-# shellcheck disable=SC2187
+#!/bin/sh
 
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────────
-# kaniko-master-versions
+# buildah-master-versions
 #
 # Reads tags produced by master-versions plugin, resolves each tag to a Dockerfile, and
-# builds + pushes the image via /kaniko/executor.
+# builds + pushes the image via buildah.
 #
 # Required:
 #   PLUGIN_BASE_PATH       — directory to scan for Dockerfiles.
@@ -29,12 +28,11 @@ set -euo pipefail
 #                            NOT set by default — only the exact version tag is pushed.
 #                            e.g. "latest"       → also push :latest
 #                            e.g. "prod,staging" → also push :prod and :staging
-#   PLUGIN_DRY_RUN         — "true" → --no-push (no actual push)
-#   PLUGIN_LOG_LEVEL       — kaniko executor log verbosity (default: info)
-#                            Controls the -v flag passed directly to /kaniko/executor.
+#   PLUGIN_DRY_RUN         — "true" → build only, no push
+#   PLUGIN_LOG_LEVEL       — buildah log verbosity (default: info)
 #                            Available values: panic, fatal, error, warn, info, debug, trace
-#   PLUGIN_SKIP_TLS_VERIFY — "true" → --skip-tls-verify
-#   PLUGIN_INSECURE        — "true" → --insecure
+#   PLUGIN_SKIP_TLS_VERIFY — "true" → --tls-verify=false
+#   PLUGIN_INSECURE        — "true" → --tls-verify=false
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Print a yellow-coloured message. Accepts >&2 redirect like a normal echo.
@@ -57,43 +55,37 @@ validate_required() {
 }
 
 setup_docker_auth() {
-    local auth
-    auth="$(printf '%s:%s' "${PLUGIN_USERNAME}" "${PLUGIN_PASSWORD}" | base64 | tr -d '\n')"
-    mkdir -p /kaniko/.docker
-    cat > /kaniko/.docker/config.json <<DOCKERJSON
-{
-    "auths": {
-        "${PLUGIN_REGISTRY:-index.docker.io}": {
-            "auth": "${auth}"
-        }
-    }
-}
-DOCKERJSON
-    yecho "Docker auth configured for ${PLUGIN_REGISTRY:-index.docker.io}" >&2
+    local registry="${PLUGIN_REGISTRY:-index.docker.io}"
+    local tls_verify="true"
+    [ "${PLUGIN_SKIP_TLS_VERIFY:-}" = "true" ] && tls_verify="false"
+    [ "${PLUGIN_INSECURE:-}"        = "true" ] && tls_verify="false"
+
+    buildah login \
+        --username "${PLUGIN_USERNAME}" \
+        --password "${PLUGIN_PASSWORD}" \
+        --tls-verify="${tls_verify}" \
+        "${registry}"
+    yecho "Auth configured for ${registry}" >&2
 }
 
-# Extract the version from the END of a tag.
-# Matches: v1.2.3 / 1.2.3 / v1.8 / 1.8 etc.
+# Extract the version: everything after the last '-'.
+# nati-1.0.0_abc123   → 1.0.0_abc123
+# 1.0.0_abc123        → 1.0.0_abc123  (no '-', whole string is version)
 extract_version() {
-    printf '%s' "${1}" | grep -oE '(v?[0-9]+(\.[0-9]+)*)$'
+    local tag="${1}"
+    printf '%s' "${tag##*-}"
 }
 
-# Return everything BEFORE the version suffix and its hyphen separator.
-# Returns empty string if the whole tag IS the version (Dockerfile at PLUGIN_BASE_PATH root).
+# Extract the slug: everything before the last '-'.
+# nati-1.0.0_abc123        → nati
+# plugins-docker-1.0.0_abc → plugins-docker
+# 1.0.0_abc123             → "" (no '-' before version, root component)
 extract_slug() {
     local tag="${1}"
-    local ver
-    ver="$(extract_version "${tag}")"
-
-    if [ -z "${ver}" ]; then
-        printf '%s' "${tag}"
-        return
-    fi
-
+    local ver="${tag##*-}"
+    [ "${ver}" = "${tag}" ] && printf '' && return
     local slug="${tag%-${ver}}"
-    [ "${slug}" = "${tag}" ] && slug=""
-
-    printf '%s' "${slug}"
+    printf '%s' "${slug%-}"
 }
 
 
@@ -154,6 +146,11 @@ build_image() {
     local repo="${PLUGIN_REPO:-}"
     local dockerfile_name="${PLUGIN_DOCKERFILE:-Dockerfile}"
     local log="${PLUGIN_LOG_LEVEL:-info}"
+    local aliases="${PLUGIN_ALIASES:-}"
+
+    local tls_verify="true"
+    [ "${PLUGIN_SKIP_TLS_VERIFY:-}" = "true" ] && tls_verify="false"
+    [ "${PLUGIN_INSECURE:-}"        = "true" ] && tls_verify="false"
 
     local context
     if [ "${rel_path}" = "." ] || [ -z "${rel_path}" ]; then
@@ -171,52 +168,48 @@ build_image() {
         image_base="${registry}${repo:+/${repo}}/${rel_path}"
     fi
 
-    # Build args as positional params to avoid word-splitting bugs with leading spaces in busybox sh
-    set -- \
-        -v "${log}" \
-        --context="${context}" \
-        --snapshot-mode=redo \
-        --ignore-path=/var/spool/mail \
-        --dockerfile="${context}/${dockerfile_name}"
-
-    [ "${PLUGIN_SKIP_TLS_VERIFY:-}" = "true" ] && set -- "$@" --skip-tls-verify=true
-    [ "${PLUGIN_INSECURE:-}"        = "true" ] && set -- "$@" --insecure=true
-    [ -n "${PLUGIN_REGISTRY_MIRROR:-}" ]       && set -- "$@" \
-        "--registry-mirror=${PLUGIN_REGISTRY_MIRROR}" \
-        "--insecure-registry=${PLUGIN_REGISTRY_MIRROR}"
-
-    local aliases="${PLUGIN_ALIASES:-}"
-    if [ "${PLUGIN_DRY_RUN:-}" = "true" ]; then
-        set -- "$@" --no-push
-    else
-        set -- "$@" "--destination=${image_base}:${version}"
-        if [ -n "${aliases}" ]; then
-            local alias_tag
-            while IFS= read -r alias_tag; do
-                alias_tag="$(printf '%s' "${alias_tag}" | tr -d ' ')"
-                [ -z "${alias_tag}" ] && continue
-                set -- "$@" "--destination=${image_base}:${alias_tag}"
-            done << ALIASES
-$(printf '%s' "${aliases}" | tr ',' '\n')
-ALIASES
-        fi
-    fi
+    local version_tag="${image_base}:${version}"
 
     yecho "================================================================"
     yecho "Component : ${rel_path}"
     yecho "Version   : ${version}"
     yecho "Aliases   : ${aliases:-(none)}"
+    yecho "Isolation : rootless"
     yecho "Log level : ${log}"
     yecho "Context   : ${context}"
     yecho "Dockerfile: ${context}/${dockerfile_name}"
-    yecho "Destinations:"
-    for arg in "$@"; do
-        case "${arg}" in --destination=*) yecho "  ${arg#--destination=}" ;; esac
-    done
-    [ "${PLUGIN_DRY_RUN:-}" = "true" ] && yecho "  (dry-run — no push)"
+    yecho "Image     : ${version_tag}"
+    [ "${PLUGIN_DRY_RUN:-}" = "true" ] && yecho "  (dry-run — build only, no push)"
     yecho "================================================================"
 
-    /kaniko/executor "$@"
+    buildah bud \
+        --isolation rootless \
+        --log-level "${log}" \
+        --file "${context}/${dockerfile_name}" \
+        --tag "${version_tag}" \
+        "${context}"
+
+    if [ "${PLUGIN_DRY_RUN:-}" = "true" ]; then
+        yecho "Dry-run: skipping push for ${version_tag}" >&2
+        return 0
+    fi
+
+    buildah push --tls-verify="${tls_verify}" "${version_tag}"
+    yecho "Pushed: ${version_tag}" >&2
+
+    if [ -n "${aliases}" ]; then
+        local alias_tag
+        while IFS= read -r alias_tag; do
+            alias_tag="$(printf '%s' "${alias_tag}" | tr -d ' ')"
+            [ -z "${alias_tag}" ] && continue
+            local full_alias="${image_base}:${alias_tag}"
+            buildah tag "${version_tag}" "${full_alias}"
+            buildah push --tls-verify="${tls_verify}" "${full_alias}"
+            yecho "Pushed alias: ${full_alias}" >&2
+        done << ALIASES
+$(printf '%s' "${aliases}" | tr ',' '\n')
+ALIASES
+    fi
 }
 
 run() {
@@ -267,13 +260,11 @@ run() {
 }
 
 main() {
-    yecho "--- KANIKO MASTER VERSIONS PLUGIN START ---" >&2
+    yecho "--- BUILDAH MASTER VERSIONS PLUGIN START ---" >&2
     validate_required
     setup_docker_auth
     run
-    yecho "--- KANIKO MASTER VERSIONS PLUGIN DONE ---" >&2
+    yecho "--- BUILDAH MASTER VERSIONS PLUGIN DONE ---" >&2
 }
 
 main
-
-

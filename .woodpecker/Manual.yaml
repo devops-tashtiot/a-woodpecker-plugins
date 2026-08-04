@@ -2,61 +2,76 @@ clone:
   git:
     image: woodpeckerci/plugin-git
     settings:
-      depth: 0
+      depth: 1
       tags: true
 
-depends_on:
-  - Tests
-
 when:
-  - event: [manual]
+  - event: [manual,pull_request]
 
 steps:
   - name: Fetch PR body
-    image: netanelzucaim123/python-git-cliff:latest
-    environment:
-      GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
-      GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
+    image: alpine
     commands:
-      - |
-        python3 - <<'EOF'
-        import json, os, sys
-        from urllib.request import urlopen, Request
-        token = os.environ["GITEA_TOKEN"]
-        url   = os.environ["GITEA_URL"]
-        repo  = os.environ["CI_REPO"]
-        req   = Request(f"{url}/api/v1/repos/{repo}/pulls?state=closed&limit=200",
-                        headers={"Authorization": f"token {token}"})
-        prs   = json.loads(urlopen(req).read())
-        if not prs:
-            print(">>> No closed PRs found — stopping pipeline")
-            sys.exit(1)
-        prs.sort(key=lambda p: p.get("merged_at") or p.get("updated_at") or "", reverse=True)
-        pr     = prs[0]
-        merged = pr.get("merged", False)
-        base   = pr.get("base", {}).get("ref", "")
-        print(f">>> Latest closed PR #{pr['number']} — merged={merged}, base={base}")
-        if not merged or base != "main":
-            print(">>> Last PR was not merged into main — stopping pipeline")
-            sys.exit(1)
-        body = pr.get("body", "")
-        open("pr_body.txt", "w").write(body)
-        print(">>> PR Body:\n" + body)
-        EOF
+      - cat pr_body.txt
+
+  # - name: Test changed plugins
+  #   image: netanelzucaim123/python-git-cliff:latest
+  #   privileged: true
+  #   commands:
+  #     - git diff --name-only HEAD~1 HEAD | grep '^plugins/' | cut -d'/' -f1-2 | sort -u > changed_dirs.txt
+  #     - |
+  #       while IFS= read -r dir; do
+  #         [ -d "$dir/tests" ] || continue
+  #         for f in "$dir/tests/"*.py "$dir/tests/"*.sh; do
+  #           [ -f "$f" ] || continue
+  #           echo ">>> Running $f"
+  #           case "$f" in
+  #             *.py) python3 "$f" || exit 1 ;;
+  #             *.sh) sh "$f"      || exit 1 ;;
+  #           esac
+  #         done
+  #       done < changed_dirs.txt
+
+  - name: Get changed dirs
+    image: netanelzucaim123/changed-files:latest
+    environment:
+      PLUGIN_OUTPUT_FILE: "changed_dirs.txt"
+      PLUGIN_OUTPUT_TYPE: "dirs"
+      PLUGIN_FOLDER_DEPTH: "2"
+      PLUGIN_DEDUP: "true"
+      PLUGIN_INCLUDE_FILES_REGEX: "^(plugins|base)"
+      PLUGIN_EXCLUDE_FILES_REGEX: '\.md$|^plugins/(buildah-monorepo|buildah-master-versions|kaniko-monorepo)'
+
+  # - name: Build changed dirs
+  #   image: netanelzucaim123/buildah-monorepo:latest
+  #   privileged: true
+  #   environment:
+  #     PLUGIN_CHANGED_FILE: "changed_dirs.txt"
+  #     PLUGIN_REGISTRY: "10.89.0.1:5000"
+  #     PLUGIN_REPO: "check"
+  #     PLUGIN_INSECURE: "true"
+  #     PLUGIN_ALIASES: "latest"
+  #     PLUGIN_USERNAME: "local"
+  #     PLUGIN_PASSWORD: "local"
+  #   commands:
+  #     - export PLUGIN_TAGS="${CI_COMMIT_SHA:0:7}"
+  #     - /app/plugin.sh
 
   - name: Run release
     image: netanelzucaim123/master-versions:latest
     environment:
-      PLUGIN_BASE_PATH: "plugins"
+      PLUGIN_BASE_PATH: "."
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       PLUGIN_MESSAGE_FILE: "pr_body.txt"
       GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
       GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
       PLUGIN_VERBOSE: 2
-      PLUGIN_CHANGELOG_LEVEL: 1
+      PLUGIN_CHANGELOG_LEVEL: 2
+      PLUGIN_PRERELEASE: "alpha"
+      PLUGIN_V_PREFIX: "true"
     commands:
       - |
-        for var in PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX; do
+        for var in PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX PLUGIN_PRERELEASE; do
           val=$(grep -m 1 "^$${var}=" pr_body.txt | cut -d= -f2-)
           if [ -n "$val" ]; then
             export "$var=$val"
@@ -64,12 +79,28 @@ steps:
           fi
         done
       - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH PLUGIN_SCOPE_EXCLUDE_REGEX=$PLUGIN_SCOPE_EXCLUDE_REGEX"
+      - sleep 3600
       - python3 /app/release.py
-  
+
+
+
+
+
+  # - name: Annotate tags with commit hash
+  #   image: alpine
+  #   commands:
+  #     - sed -i "s/$/_${CI_COMMIT_SHA:0:7}/" new_tags.txt
+  #     - echo ">>> new_tags.txt after annotation:" && cat new_tags.txt
+
+  # - name: Compare changed dirs vs released tags
+  #   image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+  #   commands:
+  #     - sh .woodpecker/compare_tags.sh
+
   - name: Push changelogs to Git
     image: alpine/git
     environment:
-      PLUGIN_BASE_PATH: "."
+      PLUGIN_BASE_PATH: .
       SCOPE_DEPTH: "1"
     commands:
       - |
@@ -97,7 +128,8 @@ steps:
       - git push --force --tags origin
 
   - name: Build and push plugin images
-    image: netanelzucaim123/kaniko-master-versions:latest
+    image: netanelzucaim123/buildah-master-versions:latest
+    privileged: true
     commands:
       - |
         val=$(grep -m 1 "^PLUGIN_BASE_PATH=" pr_body.txt | cut -d= -f2-)
@@ -108,16 +140,34 @@ steps:
       - echo ">>> PLUGIN_BASE_PATH=$PLUGIN_BASE_PATH"
       - /app/plugin.sh
     environment:
-      PLUGIN_DRY_RUN: "true"
       PLUGIN_BASE_PATH: "plugins"
       PLUGIN_REGISTRY: "10.89.0.1:5000"
       PLUGIN_REPO: ""
       PLUGIN_TAGS_FILE: "new_tags.txt"
       PLUGIN_INSECURE: "true"
-      PLUGIN_REGISTRY_MIRROR: "10.89.0.1:5000"
       PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "local"
       PLUGIN_PASSWORD: "local"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

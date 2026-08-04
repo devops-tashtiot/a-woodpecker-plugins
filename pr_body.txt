@@ -1,3 +1,5 @@
-feat(lagziel): initial release
-PLUGIN_BASE_PATH=./plugins
-SCOPE_DEPTH=1
+feat[plugins/changed-files,plugins/lagziel,plugins/nati]: check
+other[]: checking
+docs_code[plugins/changed-files]: checkkkk
+feat[plugins/master-versions,plugins/docs2confluence]: check
+feat[plugins/buildah-master-versions]: check

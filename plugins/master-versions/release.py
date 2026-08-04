@@ -53,6 +53,15 @@ def run_command(command):
     return subprocess.run(command, shell=True, capture_output=True, text=True)
 
 
+def list_remote_tags(tag_glob):
+    """
+    Returns tags matching tag_glob from local git, sorted descending by version.
+    Uses git's built-in --sort=-version:refname so semver ordering is correct.
+    """
+    result = run_command(f"git tag -l '{tag_glob}' --sort=-version:refname")
+    return [t for t in result.stdout.strip().splitlines() if t]
+
+
 def _known_commit_types(parsers):
     """
     Returns the set of raw message patterns from cliff.toml commit_parsers.
@@ -82,8 +91,9 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
           feat[nati]!: add login  ->  feat!: add login
           feat[nati]: add login          ->  feat: add login
 
-    changelog_level (int | None):
+    changelog_level (set[int] | None):
       Enforces the expected depth of every location in the PR body.
+      Accepts a set of levels — any location matching at least one level passes.
         level 0  -> only root (empty bracket []) is accepted
         level N  -> locations with exactly N-1 forward slashes:
                     1 -> "nati"           (0 slashes)
@@ -128,17 +138,15 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
         return None
 
     def _matches_level(location):
-        """Returns True if location satisfies the required changelog_level."""
+        """Returns True if location satisfies any of the required changelog levels."""
         if changelog_level is None:
             return True
-        if changelog_level == 0:
-            return location == ""
-        if location == "":
+        if "" in location.split("/") and location != "":
             return False
-        # Reject empty segments: leading /, trailing /, or consecutive //
-        if "" in location.split("/"):
-            return False
-        return location.count("/") == changelog_level - 1
+        return any(
+            location == "" if lvl == 0 else (location != "" and location.count("/") == lvl - 1)
+            for lvl in changelog_level
+        )
 
     result = {}
     lines = body.splitlines() if body else []
@@ -156,10 +164,9 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
             failed = [loc for loc in locations if not _matches_level(loc)]
             if failed:
                 def _level_reason(loc):
-                    if changelog_level == 0:
-                        return f"'{loc}' — non-empty location, level 0 expects empty []"
+                    levels_str = ",".join(str(l) for l in sorted(changelog_level))
                     if loc == "":
-                        return f"'' — empty location, a component name is required at level {changelog_level}"
+                        return f"'' — empty location not accepted by PLUGIN_CHANGELOG_LEVEL={levels_str}"
                     segments = loc.split("/")
                     if "" in segments:
                         if loc.startswith("/"):
@@ -168,13 +175,13 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
                             return f"'{loc}' — trailing slash, missing component name after last '/'"
                         return f"'{loc}' — consecutive '//', missing component name between slashes"
                     actual = loc.count("/")
-                    expected_slashes = changelog_level - 1
+                    examples = " or ".join(
+                        f"'{'/'.join(['component'] * l)}'" for l in sorted(changelog_level) if l > 0
+                    )
                     return (
-                        f"'{loc}' — wrong depth: location has {actual} slash(es) ({actual + 1} path segment(s)), "
-                        f"but PLUGIN_CHANGELOG_LEVEL={changelog_level} requires exactly {expected_slashes} slash(es) "
-                        f"({changelog_level} path segment(s)). "
-                        f"Example of a valid location at level {changelog_level}: "
-                        f"{'/'.join(['component'] * changelog_level)}"
+                        f"'{loc}' — wrong depth: {actual + 1} segment(s), "
+                        f"PLUGIN_CHANGELOG_LEVEL={levels_str} accepts {sorted(changelog_level)}. "
+                        f"Valid examples: {examples}"
                     )
 
                 reasons = "; ".join(_level_reason(loc) for loc in failed)
@@ -349,9 +356,10 @@ def release():
     missing = []
     if not os.getenv("PLUGIN_CHANGELOG_LEVEL"):
         missing.append(
-            "  PLUGIN_CHANGELOG_LEVEL — integer depth of component locations in your PR body.\n"
-            "    Level 0 -> root only: feat[][...]   Level 1 -> top-level: feat[nati][...]\n"
-            "    Level 2 -> nested:    feat[plugins/docker][...]   Example: PLUGIN_CHANGELOG_LEVEL=1"
+            "  PLUGIN_CHANGELOG_LEVEL — depth(s) of component locations in your PR body.\n"
+            "    Single:   PLUGIN_CHANGELOG_LEVEL=1  (only feat[nati]: ...)\n"
+            "    Multiple: PLUGIN_CHANGELOG_LEVEL=1,2 (feat[nati]: ... and feat[plugins/docker]: ...)\n"
+            "    Level 0 -> root only: feat[]   Level 1 -> top-level: feat[nati]   Level 2 -> feat[plugins/docker]"
         )
     if not os.getenv("PLUGIN_MESSAGE_FILE"):
         missing.append(
@@ -371,9 +379,9 @@ def release():
 
     # ── Load env vars ─────────────────────────────────────────────────────────
     try:
-        changelog_level = int(os.getenv("PLUGIN_CHANGELOG_LEVEL"))
+        changelog_level = {int(x.strip()) for x in os.getenv("PLUGIN_CHANGELOG_LEVEL").split(",")}
     except (TypeError, ValueError):
-        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be a non-negative integer (e.g. 1).")
+        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be one or more non-negative integers (e.g. 1 or 1,2).")
         return
 
     message_file = os.getenv("PLUGIN_MESSAGE_FILE")
@@ -393,7 +401,8 @@ def release():
     except ValueError:
         verbose = 0
     initial_tag_version = os.getenv("PLUGIN_INITIAL_TAG", "1.0.0").lstrip("v")
-    version_prefix      = "v" if os.getenv("PLUGIN_V_PREFIX", "").lower() == "true" else ""
+    prerelease          = os.getenv("PLUGIN_PRERELEASE", "").strip()
+    version_prefix      = "v" if os.getenv("PLUGIN_V_PREFIX", "true").lower() == "true" else ""
 
     _bundled_toml = os.path.join(os.path.dirname(__file__), "cliff.toml")
     global_toml   = os.getenv("PLUGIN_CLIFF_TOML") or ("./cliff.toml" if os.path.exists("./cliff.toml") else _bundled_toml)
@@ -408,7 +417,7 @@ def release():
 
     _print_cliff_rules(parsers, bump_cfg, global_toml)
 
-    print(f">>> PLUGIN_CHANGELOG_LEVEL={changelog_level}")
+    print(f">>> PLUGIN_CHANGELOG_LEVEL={','.join(str(l) for l in sorted(changelog_level))}")
     print(f">>> PLUGIN_BASE_PATH='{root_path}' — root directory; all [location] paths are resolved relative to this")
 
     # ── Parse PR body ─────────────────────────────────────────────────────────
@@ -449,13 +458,15 @@ def release():
             path_slug             = ""
             tag_prefix            = version_prefix
             tag_glob              = f"{version_prefix}[0-9]*"
-            component_tag_pattern = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
+            stable_tag_pattern    = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
+            component_tag_pattern = f"^{vp}[0-9]+\\.[0-9]+\\.[0-9]+"
             full_path             = os.path.normpath(root_path)
         else:
             path_slug             = location.replace("/", "-").replace("\\", "-")
             tag_prefix            = f"{path_slug}-{version_prefix}"
             tag_glob              = f"{path_slug}-{version_prefix}[0-9]*"
-            component_tag_pattern = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
+            stable_tag_pattern    = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
+            component_tag_pattern = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+"
             full_path             = os.path.normpath(os.path.join(root_path, location))
 
         display_name = location if location else "(root)"
@@ -467,15 +478,18 @@ def release():
             print(f">>> SKIP: Directory '{location}' does not exist.")
             continue
 
-        # ── STEP 1: FIND EXISTING TAGS ────────────────────────────────────────
-        existing_tags_result = run_command(f"git tag -l '{tag_glob}' --sort=-version:refname")
-        all_matching_tags = existing_tags_result.stdout.strip().splitlines()
-        latest_tag = all_matching_tags[0] if all_matching_tags else None
+        # ── STEP 1: FIND LATEST STABLE TAG ───────────────────────────────────
+        all_matching_tags = list_remote_tags(tag_glob)
+        # Only exact X.Y.Z tags count as a stable base
+        latest_stable_tag = next(
+            (t for t in all_matching_tags if re.match(stable_tag_pattern, t)),
+            None
+        )
 
         print(f">>> [INFO] Tag glob:          '{tag_glob}'")
         first_tag = f"{tag_prefix}{initial_tag_version}"
-        print(f">>> [INFO] Latest tag (base): "
-              f"{latest_tag or f'(none — first release → will use {first_tag})'}")
+        print(f">>> [INFO] Latest stable tag: "
+              f"{latest_stable_tag or f'(none — first release → will use {first_tag})'}")
 
         # Build --with-commit args (shell-safe quoting handles special chars)
         all_commits = sorted(commits)
@@ -496,10 +510,18 @@ def release():
         print(f">>> [INFO] Commits: {all_commits}")
 
         # ── STEP 2: CALCULATE VERSION ─────────────────────────────────────────
-        if latest_tag:
+        # Always calculate next_stable_tag first, then branch on prerelease.
+        # This ensures series continuity: prerelease always bases off the would-be
+        # stable bump, ignoring any stale prerelease tags at a lower base version.
+        # cliff_tag_pattern tracks which pattern to use for CHANGELOG generation (STEP 3)
+        next_stable_tag = None
+        if latest_stable_tag:
+            # Must use stable_tag_pattern (ends with $) so git-cliff only sees exact
+            # X.Y.Z tags — without $, prerelease tags like v1.2.0-alpha.2 would match
+            # the prefix and git-cliff would bump from there instead of v1.1.0.
             bump_cmd = " ".join(filter(None, [
                 cliff_cmd_base,
-                f"--tag-pattern '{component_tag_pattern}'",
+                f"--tag-pattern '{stable_tag_pattern}'",
                 "--bump --bumped-version",
                 bump_commit_args,
                 "-- HEAD..HEAD",
@@ -515,19 +537,74 @@ def release():
                 for line in bumped.stderr.strip().splitlines():
                     print(f"    {line}")
 
-            new_tag = bumped.stdout.strip()
-            if not new_tag:
+            next_stable_tag = bumped.stdout.strip()
+            if not next_stable_tag or next_stable_tag == latest_stable_tag:
                 print(f">>> SKIP: no releasable commits for {display_name}")
                 continue
 
-            if new_tag == latest_tag:
-                print(f">>> SKIP: bumped version equals latest tag ({latest_tag}) — no releasable commits for {display_name}")
-                continue
+            print(f">>> [INFO] Next stable tag would be: {next_stable_tag}")
 
-            print(f">>> [INFO] Calculated new_tag: {new_tag}")
+
+        if not prerelease:
+            # Stable release
+            new_tag = next_stable_tag or first_tag
+            if not next_stable_tag:
+                print(f">>> [INFO] No existing tag — first stable release: {new_tag}")
+            else:
+                print(f">>> [INFO] Calculated new_tag: {new_tag}")
+            cliff_tag_pattern = stable_tag_pattern
+
         else:
-            new_tag = f"{tag_prefix}{initial_tag_version}"
-            print(f">>> [INFO] No existing tag — first release: {new_tag}")
+            # Prerelease — always base off the would-be stable, never off stale prerelease
+            # tags at a lower base version (e.g. stable=v1.3.0 + feat → base=v1.4.0,
+            # ignoring any existing v1.2.0-alpha.N tags).
+            escaped_pr = re.escape(prerelease)
+            base_for_pr = next_stable_tag or first_tag
+
+            # Look ONLY at prerelease tags in this exact series (base-channel or base-channel.N)
+            pr_series_glob = f"{base_for_pr}-{prerelease}*"
+            pr_series_pattern = f"^{re.escape(base_for_pr)}-{escaped_pr}($|\\.[0-9]+$)"
+            pr_series_tags = list_remote_tags(pr_series_glob)
+            latest_in_series = next(
+                (t for t in pr_series_tags if re.match(pr_series_pattern, t)),
+                None,
+            )
+
+            print(f">>> [INFO] Prerelease base: {base_for_pr}, series glob: '{pr_series_glob}'")
+            print(f">>> [INFO] Latest in series: {latest_in_series or '(none — first in series)'}")
+
+            if latest_in_series:
+                # git-cliff bumps the counter within this exact series
+                bump_cmd = " ".join(filter(None, [
+                    cliff_cmd_base,
+                    f"--tag-pattern '{pr_series_pattern}'",
+                    "--bump --bumped-version",
+                    bump_commit_args,
+                    "-- HEAD..HEAD",
+                ]))
+                print(f">>> [VERBOSE] For bump calculation only, pass only the first line (subject) of each commit.")
+                print(f">>> [VERBOSE] bump_cmd: {bump_cmd}")
+
+                bumped = run_command(bump_cmd)
+
+                print(f">>> [VERBOSE] bump stdout: {bumped.stdout.strip()}")
+                if bumped.stderr.strip():
+                    print(">>> [VERBOSE] bump stderr:")
+                    for line in bumped.stderr.strip().splitlines():
+                        print(f"    {line}")
+
+                new_tag = bumped.stdout.strip()
+                if not new_tag or new_tag == latest_in_series:
+                    print(f">>> SKIP: no releasable commits for {display_name}")
+                    continue
+
+                print(f">>> [INFO] Calculated new_tag: {new_tag}")
+                cliff_tag_pattern = pr_series_pattern
+            else:
+                # First prerelease in this series — Python creates it, no counter
+                new_tag = f"{base_for_pr}-{prerelease}"
+                print(f">>> [INFO] First prerelease in series: {new_tag}")
+                cliff_tag_pattern = stable_tag_pattern
 
         # ── STEP 3: GENERATE CHANGELOG ────────────────────────────────────────
         changelog_path = os.path.join(full_path, "CHANGELOG.md")
@@ -540,7 +617,7 @@ def release():
 
         cliff_cmd = " ".join(filter(None, [
             cliff_cmd_base,
-            f"--tag-pattern '{component_tag_pattern}'",
+            f"--tag-pattern '{cliff_tag_pattern}'",
             f"--tag '{new_tag}'",
             with_commit_args,
             output_flag,
@@ -580,6 +657,12 @@ def release():
 
 if __name__ == "__main__":
     release()
+
+
+
+
+
+
 
 
 

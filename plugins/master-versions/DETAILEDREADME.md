@@ -15,7 +15,7 @@ Technical reference for how `master-versions` works under the hood.
 
 ## 1. What is git-cliff?
 
-git-cliff is a changelog generator. It reads commit messages, groups them by type, and produces structured `CHANGELOG.md` files. It also calculates the next semantic version by looking at what types of changes are present — a `feat` bumps minor, a `fix` bumps patch, a breaking change bumps major.
+git-cliff is a changelog generator. It reads commit messages, groups them by type, and produces structured `CHANGELOG.md` files. It also calculates the next semantic version by looking at what types of changes are present — a `feat` bumps minor, a `fix` bumps patch, a `breaking` change bumps major.
 
 By default git-cliff reads from the git log. This plugin does **not** use that mode.
 
@@ -166,3 +166,5 @@ The full multiline commit string is passed here — the body content is needed f
 3. git cliff --tag 'nati-1.1.0' ...   → write CHANGELOG.md (full commit body)
 4. append 'nati-1.1.0' to output tags file
 ```
+
+

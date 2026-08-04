@@ -76,7 +76,7 @@ steps:
       - git push --force --tags origin
 
   - name: Build and push plugin images
-    image: netanelzucaim123/kaniko-master-versions:latest
+    image: netanelzucaim123/buildah-master-versions:latest
     commands:
       - |
         val=$(grep -m 1 "^PLUGIN_BASE_PATH=" pr_body.txt | cut -d= -f2-)

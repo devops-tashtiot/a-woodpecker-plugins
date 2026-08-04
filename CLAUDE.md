@@ -40,7 +40,7 @@ cd plugins/master-versions && python3 test_release_cliff.py
 
 ### Run Docker integration tests
 ```bash
-cd plugins/kaniko-master-versions && ./test_release_docker.sh
+cd plugins/buildah-master-versions && ./test_release_docker.sh
 ```
 
 ---
@@ -54,14 +54,14 @@ cd plugins/kaniko-master-versions && ./test_release_docker.sh
 | `PLUGIN_MESSAGE` | `""` | Yes | Text containing conventional commit lines (PR body, manual input, etc.) |
 | `PLUGIN_BASE_PATH` | `"."` | Yes | Root directory. All `[location]` paths are resolved relative to this. |
 | `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | No | Python regex — any location matching this is skipped (wildcard and explicit) |
-| `PLUGIN_OUTPUT_TAGS_FILE` | `""` | No | If set, each created tag is appended here (read by `kaniko-master-versions`) |
+| `PLUGIN_OUTPUT_TAGS_FILE` | `""` | No | If set, each created tag is appended here (read by `buildah-master-versions`) |
 | `PLUGIN_DRY_RUN` | `""` | No | `"true"` → show what would be released, skip all file writes |
 | `PLUGIN_DEBUG` | `false` | No | `true` or `false` — enables detailed debug output for every git-cliff call |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | No | Version used for the first release of a component with no existing tag |
 | `PLUGIN_V_PREFIX` | `""` | No | `"true"` → tags use `v` prefix (`nati-v1.0.0`); anything else → no prefix (`nati-1.0.0`) |
 | `PLUGIN_CLIFF_TOML` | *(bundled)* | No | Path to a custom `cliff.toml`. Defaults to the one bundled in the image. |
 
-### kaniko-master-versions plugin (`plugin.sh`)
+### buildah-master-versions plugin (`plugin.sh`)
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
@@ -149,12 +149,12 @@ Forward slashes in the location are replaced with hyphens to form the tag prefix
 | `plugins/master-versions/release.py` | Main orchestrator — reads `PLUGIN_*` env vars directly, no shell wrapper |
 | `plugins/master-versions/test_release.py` | Unit tests — uses inline `PARSERS` fixture (mirrors `cliff.toml`), stable regardless of cliff.toml changes |
 | `plugins/master-versions/test_release_cliff.py` | Unit tests that load the **real** `cliff.toml` — breaks loudly when cliff.toml changes, good for validating custom configs |
-| `plugins/kaniko-master-versions/test_release_docker.sh` | Docker integration tests — runs `netanelzucaim123/master-versions:latest` against a real git repo |
+| `plugins/buildah-master-versions/test_release_docker.sh` | Docker integration tests — runs `netanelzucaim123/master-versions:latest` against a real git repo |
 | `plugins/master-versions/cliff.toml` | git-cliff config and source of truth for commit type recognition |
 | `plugins/master-versions/README.md` | User-facing documentation |
 | `plugins/master-versions/Dockerfile` | Plugin image — build context is repo root |
-| `plugins/kaniko-master-versions/plugin.sh` | Reads tags from `PLUGIN_TAGS_FILE`, resolves each to a Dockerfile, builds and pushes via Kaniko |
-| `plugins/kaniko-master-versions/README.md` | kaniko-master-versions documentation |
+| `plugins/buildah-master-versions/plugin.sh` | Reads tags from `PLUGIN_TAGS_FILE`, resolves each to a Dockerfile, builds and pushes via Kaniko |
+| `plugins/buildah-master-versions/README.md` | buildah-master-versions documentation |
 | `.woodpecker/Build.yaml` | CI pipeline |
 
 ### Stateless Design Constraints
@@ -172,10 +172,10 @@ Forward slashes in the location are replaced with hyphens to form the tag prefix
 The two plugins run as consecutive steps:
 
 1. **master-versions** — parses the message, calculates versions, writes `CHANGELOG.md` files, appends each created tag to `PLUGIN_OUTPUT_TAGS_FILE` (e.g. `new_tags.txt`)
-2. **kaniko-master-versions** — reads `new_tags.txt` via `PLUGIN_TAGS_FILE`, resolves each tag to a Dockerfile on disk, builds and pushes via Kaniko
+2. **buildah-master-versions** — reads `new_tags.txt` via `PLUGIN_TAGS_FILE`, resolves each tag to a Dockerfile on disk, builds and pushes via Kaniko
 
 ```
-master-versions                       kaniko-master-versions
+master-versions                       buildah-master-versions
 ──────────────────────────────        ──────────────────────────────────────
 parse PLUGIN_MESSAGE                  reads new_tags.txt line by line
   → nati-v1.1.0                  ──►  nati-v1.1.0  → slug=nati  → PLUGIN_BASE_PATH/nati/Dockerfile
@@ -192,7 +192,7 @@ Steps run on every push to `main`:
 1. **Fetch PR body** — curl Gitea API, write to `pr_body.txt`
 2. **Run release** (`netanelzucaim123/master-versions`) — runs `release.py`, writes created tags to `new_tags.txt` via `PLUGIN_OUTPUT_TAGS_FILE`
 3. **Push changelogs to Git** — commits `*/CHANGELOG.md` changes, force-pushes tags
-4. **Build and push plugin images** (`netanelzucaim123/kaniko-master-versions`) — reads `new_tags.txt`, builds Docker image per tag via Kaniko
+4. **Build and push plugin images** (`netanelzucaim123/buildah-master-versions`) — reads `new_tags.txt`, builds Docker image per tag via Kaniko
 
 Required secrets: `docker_username`, `docker_password`
 
@@ -218,14 +218,14 @@ Hooks are configured in `.claude/settings.json` and fire automatically on `PostT
 3. Update `plugins/master-versions/README.md` to reflect any env var, behaviour, or interface changes.
 4. Update `plugins/master-versions/test_release.py` / `test_release_cliff.py` if the change introduces new behaviours or modifies existing ones.
 
-### `plugins/kaniko-master-versions/plugin.sh`
+### `plugins/buildah-master-versions/plugin.sh`
 
 **Automatic (shell hook):** After every edit:
 1. `./test_release_docker.sh` — Docker integration tests (timeout 300s)
 
 **Required manually by Claude:** After every edit, also:
-2. Update `plugins/kaniko-master-versions/README.md` to reflect any interface changes.
-3. Update `plugins/kaniko-master-versions/test_release_docker.sh` if new behaviour needs coverage.
+2. Update `plugins/buildah-master-versions/README.md` to reflect any interface changes.
+3. Update `plugins/buildah-master-versions/test_release_docker.sh` if new behaviour needs coverage.
 
 ### Error Handling
 

@@ -23,9 +23,9 @@
           },
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); if echo \"$f\" | grep -q 'plugins/kaniko-master-versions/plugin\\.sh$'; then cd /home/netanelzucaim/devops/master-versions/semantic/plugins/kaniko-master-versions && ./test_release_docker.sh; fi",
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); if echo \"$f\" | grep -q 'plugins/buildah-master-versions/plugin\\.sh$'; then cd /home/netanelzucaim/devops/master-versions/semantic/plugins/buildah-master-versions && ./test_release_docker.sh; fi",
             "timeout": 300,
-            "statusMessage": "Running kaniko-master-versions Docker tests..."
+            "statusMessage": "Running buildah-master-versions Docker tests..."
           }
         ]
       }

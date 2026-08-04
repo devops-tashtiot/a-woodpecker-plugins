@@ -34,7 +34,7 @@ In a monorepo, each component has its own independent `CHANGELOG.md` and its own
 4. [PLUGIN_CHANGELOG_LEVEL enforcement](#4-plugin_changelog_level-enforcement)
 5. [Variables](#5-variables)
 6. [Pipeline — standalone](#6-pipeline--standalone)
-7. [Pipeline — with kaniko-master-versions (optional)](#7-pipeline--with-kaniko-master-versions-optional)
+7. [Pipeline — with buildah-master-versions (optional)](#7-pipeline--with-buildah-master-versions-optional)
 8. [Examples](#8-examples)
 
 ---
@@ -49,6 +49,18 @@ type[location]: description
 
 > The `[` bracket immediately after the type is what makes a line a commit line.
 > Without it the line is ignored — even if it starts with `feat` or `fix`.
+
+### Semantic versioning — major, minor, patch
+
+Every version has three numbers: `MAJOR.MINOR.PATCH` (e.g. `1.4.2`).
+
+| Part | When it bumps | Example |
+|------|--------------|---------|
+| `PATCH` | A bug fix — nothing new, nothing removed | `1.4.2` → `1.4.3` |
+| `MINOR` | A new feature — backwards compatible, nothing removed | `1.4.2` → `1.5.0` |
+| `MAJOR` | A breaking change — existing behaviour removed or changed incompatibly | `1.4.2` → `2.0.0` |
+
+When a part is bumped, all lower parts reset to `0`.
 
 ### Types (defined in `cliff.toml`)
 
@@ -193,11 +205,12 @@ feat[nati, harel]: auth update     → ACCEPT (both have 0 slashes)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to write created tags to — one per line. Always created/truncated at startup even if no tags are produced. Consumed by `kaniko-master-versions` when building Docker images. |
+| `PLUGIN_OUTPUT_TAGS_FILE` | `""` | File to write created tags to — one per line. Always created/truncated at startup even if no tags are produced. Consumed by `buildah-master-versions` when building Docker images. |
 | `PLUGIN_SCOPE_EXCLUDE_REGEX` | `""` | Python regex applied to every location before processing. Any matching location is skipped. Example: `^docs$\|^scripts$`. |
 | `PLUGIN_VERBOSE` | `0` | `0` = minimal output, `1` = show git-cliff commands, `2` = full trace including stderr. |
 | `PLUGIN_INITIAL_TAG` | `1.0.0` | Version used for the first release of a component with no existing tag. |
 | `PLUGIN_V_PREFIX` | `""` | Set to `"true"` to prefix version with `v` — `nati-v1.0.0` instead of `nati-1.0.0`. |
+| `PLUGIN_PRERELEASE` | `""` | Pre-release identifier appended to every calculated tag. E.g. `alpha.1` → `nati-v1.1.0-alpha.1`, `rc.2` → `nati-v1.1.0-rc.2`. The identifier is appended verbatim after a `-` separator. |
 | `PLUGIN_CLIFF_TOML` | *(bundled)* | Path to a custom `cliff.toml`. Resolution order: (1) this variable, (2) `./cliff.toml` in working dir, (3) bundled copy in the image. |
 
 ---
@@ -234,20 +247,20 @@ steps:
 
 ---
 
-## 7. Pipeline — with kaniko-master-versions (optional)
+## 7. Pipeline — with buildah-master-versions (optional)
 
 > **Only add this step if your repository contains Dockerfiles you want to build and push.**
 > If you only do versioning and changelogs, the previous section is all you need.
 
-When each component has a `Dockerfile`, `kaniko-master-versions` reads the tags file produced by `master-versions` and builds + pushes the corresponding Docker image for each tag.
+When each component has a `Dockerfile`, `buildah-master-versions` reads the tags file produced by `master-versions` and builds + pushes the corresponding Docker image for each tag.
 
 ```
-master-versions                         kaniko-master-versions
+master-versions                         buildah-master-versions
 ──────────────────────────────          ──────────────────────────────────────────
 parse PLUGIN_MESSAGE_FILE               reads new_tags.txt line by line
   → nati-1.1.0                     ──►  nati-1.1.0       → PLUGIN_BASE_PATH/nati/Dockerfile
   → plugins-docker-2.0.0           ──►  plugins-docker-2.0.0 → PLUGIN_BASE_PATH/plugins/docker/Dockerfile
-appended to new_tags.txt                builds and pushes each image via Kaniko
+appended to new_tags.txt                builds and pushes each image via buildah
 ```
 
 ```yaml
@@ -276,7 +289,7 @@ steps:
       - git push --force --tags
 
   - name: Build and push images
-    image: netanelzucaim123/kaniko-master-versions:latest
+    image: netanelzucaim123/buildah-master-versions:latest
     settings:
       base_path: .
       tags_file: new_tags.txt
