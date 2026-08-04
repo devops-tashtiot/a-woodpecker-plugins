@@ -64,8 +64,6 @@ steps:
     environment:
       PLUGIN_BASE_PATH: .
       SCOPE_DEPTH: "1"
-      BITBUCKET_TOKEN:
-        from_secret: bitbucket_token
     commands:
       - |
         for var in SCOPE_DEPTH PLUGIN_BASE_PATH; do
@@ -80,7 +78,6 @@ steps:
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
       - git config --global http.sslVerify false
-      - git remote set-url origin "https://x-token-auth:${BITBUCKET_TOKEN}@bitbucket.devopstashtiot.page/scm/${CI_REPO}.git"
       - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
       - |
         if ! git diff --cached --quiet; then
