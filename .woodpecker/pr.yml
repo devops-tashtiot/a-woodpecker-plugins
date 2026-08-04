@@ -10,14 +10,14 @@ when:
   - event: pull_request
 
 steps:
-  - name: Get changed dirs
-    image: netanelzucaim123/changed-files:latest
-    environment:
-      PLUGIN_OUTPUT_FILE: "changed_dirs.txt"
-      PLUGIN_OUTPUT_TYPE: "dirs"
-      PLUGIN_FOLDER_DEPTH: "2"
-      PLUGIN_DEDUP: "true"
-      PLUGIN_BASE_PATH: plugins
+  # - name: Get changed dirs
+  #   image: netanelzucaim123/changed-files:latest
+  #   environment:
+  #     PLUGIN_OUTPUT_FILE: "changed_dirs.txt"
+  #     PLUGIN_OUTPUT_TYPE: "dirs"
+  #     PLUGIN_FOLDER_DEPTH: "2"
+  #     PLUGIN_DEDUP: "true"
+  #     PLUGIN_BASE_PATH: plugins
 
   - name: Run release
     image: netanelzucaim123/master-versions:latest
@@ -27,8 +27,6 @@ steps:
       PLUGIN_BITBUCKET_TOKEN:
         from_secret: bitbucket_token
       PLUGIN_MESSAGE: "${MESSAGE}"
-      GITEA_TOKEN: 48900285bf3075ce084699656ddf5ac7b88685a8
-      GITEA_URL: http://gitea-http.gitea.svc.cluster.local:3000
       PLUGIN_VERBOSE: 2
       PLUGIN_CHANGELOG_LEVEL: 2
       PLUGIN_OUTPUT_LOCATIONS_FILE: "locations.txt"
