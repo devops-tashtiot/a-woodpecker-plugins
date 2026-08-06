@@ -64,9 +64,16 @@ jobs:
       - name: Push mirror to Bitbucket
         working-directory: repo-mirror
         run: |
+          # Not `--mirror`: Bitbucket owns refs/pull-requests/* itself (created
+          # for its own PR tracking, never present in the GitHub source), and its
+          # pre-receive hook rejects any attempt to touch them. --mirror tries to
+          # prune them as "not in source" and that single rejected ref fails the
+          # whole atomic push — heads and tags included. Scope the mirror (with
+          # pruning) to just those two namespaces instead.
           git -c http.extraheader="CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
               -c http.extraheader="CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
-              push --mirror "https://admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}@bitbucket.devopstashtiot.page/scm/devopstashtiot/a-woodpecker-plugins.git"
+              push --prune "https://admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}@bitbucket.devopstashtiot.page/scm/devopstashtiot/a-woodpecker-plugins.git" \
+              '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
 
       - name: Ensure Bitbucket's default branch matches GitHub's
         # A `--mirror` push doesn't set Bitbucket's default branch. Bitbucket
