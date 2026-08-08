@@ -1,10 +1,9 @@
 clone:
   git:
-    image: woodpeckerci/plugin-git
+    image: harbor.devopstashtiot.page/plugins/plugin-git-cert:prod
     settings:
       depth: 0
       tags: false
-      custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
 
 when:
   - event: pull_request
@@ -20,7 +19,7 @@ steps:
   #     PLUGIN_BASE_PATH: plugins
 
   - name: Run release
-    image: netanelzucaim123/master-versions:latest
+    image: harbor.devopstashtiot.page/plugins/master-versions:latest
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
@@ -38,7 +37,7 @@ steps:
   #     PLUGIN_FAIL_ON_MISMATCH: "true"
 
   - name: Build and push plugin images
-    image: netanelzucaim123/buildah-master-versions:latest
+    image: harbor.devopstashtiot.page/plugins/buildah-master-versions:latest
     privileged: true
     environment:
       PLUGIN_BASE_PATH: "."
@@ -51,7 +50,7 @@ steps:
         from_secret: harbor_password
 
   - name: Push changelogs to Git
-    image: alpine/git
+    image: harbor.devopstashtiot.page/base/git-cert:prod
     environment:
       PLUGIN_BASE_PATH: .
       SCOPE_DEPTH: "1"
@@ -68,7 +67,6 @@ steps:
       - git config --global user.email "ci-bot@example.com"
       - git config --global user.name "CI Bot"
       - git config --global safe.directory '*'
-      - git config --global http.sslVerify false
       - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
       - |
         if ! git diff --cached --quiet; then
