@@ -4,6 +4,16 @@ Woodpecker CI plugin that reads the tags produced by the **MasterVersions plugin
 
 Designed to run as the final step of the release pipeline, right after the MasterVersions plugin creates the git tags.
 
+### TLS to Harbor
+
+The image (`quay.io/buildah/stable`, Fedora-based) bakes in Cloudflare's Origin CA root
+(`cloudflare-origin-ca-rsa-root.pem` → `/etc/pki/ca-trust/source/anchors/`, then `update-ca-trust`).
+`harbor.devopstashtiot.page` is reached internally via ingress-nginx, which presents an Origin
+CA-issued cert that no public trust store carries. Baking the root in lets `buildah push` verify
+TLS normally, so the pipeline does **not** set `PLUGIN_SKIP_TLS_VERIFY` — see the `.woodpecker/`
+build step. `PLUGIN_SKIP_TLS_VERIFY` / `PLUGIN_INSECURE` still exist as an escape hatch for other
+registries (below).
+
 ---
 
 ## How it works
