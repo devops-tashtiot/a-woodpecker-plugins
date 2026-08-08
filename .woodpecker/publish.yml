@@ -48,7 +48,6 @@ steps:
       PLUGIN_REGISTRY: "harbor.devopstashtiot.page"
       PLUGIN_REPO: ""
       PLUGIN_TAGS_FILE: "new_tags.txt"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
       PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "admin"
       PLUGIN_PASSWORD:
