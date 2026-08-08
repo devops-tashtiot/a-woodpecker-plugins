@@ -1,0 +1,60 @@
+# Bitbucket is the sole source of truth for this repo — push directly into
+# it over HTTPS (past Cloudflare Access's email-OTP wall using the
+# bitbucket-push service token; see devtools-labs Terraform's cloudflare
+# module and the top-level devops/CLAUDE.md's "Bitbucket push access"
+# section). Every push here re-syncs the full repo (all branches, tags, and
+# their deletions) onto GitHub at
+# github.com/devops-tashtiot/a-woodpecker-plugins (branches + tags mirror).
+# GitHub is branch-protected to be read-only except for this pipeline's push
+# identity — never push to it directly, and the next sync would overwrite it
+# even if you did. Independent of pr.yml/publish.yml (which build/release
+# from PRs and pushes to main) — this pipeline only mirrors the repo, on
+# every push to any branch.
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      depth: 0
+      tags: false
+      custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
+
+when:
+  - event: push
+
+steps:
+  - name: Mirror to GitHub
+    image: alpine/git
+    environment:
+      BITBUCKET_TOKEN:
+        from_secret: bitbucket_token
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      # Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any public
+      # trust store — disable verification for these in-cluster git calls, the
+      # same way publish.yml's working "Push changelogs to Git" step does.
+      - git config --global http.sslVerify false
+      # CRITICAL: the secret env vars below are written as doubled-dollar-brace
+      # (dollar dollar brace VAR brace). Woodpecker runs drone/envsubst over the
+      # ENTIRE raw pipeline file (comments included!) before parsing it, so a
+      # single-dollar-brace reference gets emptied and the doubled dollar makes
+      # Woodpecker emit one literal dollar-brace reference for the shell to
+      # expand. Same escape pr.yml/publish.yml use for their shell vars. NOTE:
+      # this comment must not contain a raw dollar-brace-dot-dot-dot placeholder
+      # — drone/envsubst fails the whole file with "unable to parse variable
+      # name" if it sees one, even inside a comment.
+      #
+      # Cloning only needs read access, so the existing bitbucket_token secret
+      # (already used by publish.yml to read PR descriptions) is enough. This
+      # Bitbucket DC instance accepts its HTTP access token ONLY as an
+      # `Authorization: Bearer <token>` header — NOT as x-token-auth in the URL
+      # (that returns 401). Single-quoted so YAML doesn't read the colon-space
+      # in the header as a map key.
+      - 'git -c http.extraheader="Authorization: Bearer $${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/a-woodpecker-plugins.git" repo-mirror'
+      - cd repo-mirror
+      # Push branches and tags only (with --prune so deletions propagate), NOT
+      # `git push --mirror`. GitHub rejects writes to its hidden refs/pull/*
+      # refs ("deny updating a hidden ref"), which a full mirror would attempt
+      # if any such refs exist in Bitbucket's ref store. Restricting to
+      # refs/heads/* + refs/tags/* mirrors every branch and tag safely.
+      - 'git push --prune "https://x-access-token:$${GITHUB_TOKEN}@github.com/devops-tashtiot/a-woodpecker-plugins.git" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"'

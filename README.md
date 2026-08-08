@@ -1,4 +1,13 @@
 # MasterVersions — Stateless Monorepo Release Orchestrator
+
+> ## 🪞 This is a read-only mirror
+> The **source of truth is Bitbucket**:
+> `bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins`.
+> Clone and push **there** — pushes to this GitHub repo are rejected by branch
+> protection and would be overwritten on the next sync anyway. GitHub is kept in
+> sync one-way by a Woodpecker pipeline (`.woodpecker/mirror-to-github.yml`) that
+> runs on every Bitbucket push.
+
 #
 `release.py` automates semantic versioning and changelog generation for any repo structure — polyrepo, monorepo, or nested monorepo. The **PR body is the single source of truth**: what you write in the PR description determines which components get a new version tag and what the bump level is.
 
