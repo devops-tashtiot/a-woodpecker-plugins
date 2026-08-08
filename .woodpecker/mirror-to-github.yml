@@ -12,18 +12,17 @@
 # every push to any branch.
 clone:
   git:
-    image: woodpeckerci/plugin-git
+    image: harbor.devopstashtiot.page/plugins/plugin-git-cert:prod
     settings:
       depth: 0
       tags: false
-      custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
 
 when:
   - event: push
 
 steps:
   - name: Mirror to GitHub
-    image: alpine/git
+    image: harbor.devopstashtiot.page/base/git-cert:prod
     environment:
       BITBUCKET_TOKEN:
         from_secret: bitbucket_token
@@ -33,7 +32,6 @@ steps:
       # Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any public
       # trust store — disable verification for these in-cluster git calls, the
       # same way publish.yml's working "Push changelogs to Git" step does.
-      - git config --global http.sslVerify false
       # CRITICAL: the secret env vars below are written as doubled-dollar-brace
       # (dollar dollar brace VAR brace). Woodpecker runs drone/envsubst over the
       # ENTIRE raw pipeline file (comments included!) before parsing it, so a
