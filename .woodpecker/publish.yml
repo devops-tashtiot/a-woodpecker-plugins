@@ -4,6 +4,12 @@ clone:
     settings:
       depth: 0
       tags: false
+      # partial-clone (plugin-git default ON) forces `--depth=1 --filter=tree:0`,
+      # which makes a SHALLOW clone and silently ignores `depth: 0`. A shallow
+      # graft severs ancestry, so master-versions' `git describe` finds no tag
+      # and every component is mis-detected as a first release. `partial: false`
+      # + `depth: 0` yields a real full clone so tag resolution works.
+      partial: false
 
 when:
   - event: manual
