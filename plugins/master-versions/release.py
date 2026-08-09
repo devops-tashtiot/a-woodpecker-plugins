@@ -442,16 +442,38 @@ def _retrieve_pull_request_message():
 
 
 def _retrieve_manual_message():
-    """manual event -> use the PLUGIN_MESSAGE env var as-is."""
+    """manual event -> use the PLUGIN_MESSAGE env var as-is.
+
+    Echoes the exact message back to the user, loudly and in full, so that on a
+    manual run there is never any doubt about what was actually submitted — the
+    #1 cause of a "no release commits detected" run is a mistyped or wrong
+    PLUGIN_MESSAGE (e.g. pasting an image reference instead of a `feat[loc]:`
+    line), which is invisible unless the message is printed back.
+    """
     message = os.getenv("PLUGIN_MESSAGE", "")
     if not message:
         print(">>> ERROR: PLUGIN_MESSAGE is empty — required for a manual run.")
         return None
-    print(">>> [INFO] Using PLUGIN_MESSAGE env var directly. Message written by the user:")
-    print("\033[36m--- BEGIN PLUGIN_MESSAGE ---\033[0m")
-    for line in message.splitlines():
-        print(f"\033[36m    {line}\033[0m")
-    print("\033[36m--- END PLUGIN_MESSAGE ---\033[0m")
+
+    lines = message.splitlines()
+    print("")
+    print("\033[1;33m==================================================================\033[0m")
+    print("\033[1;33m>>> PLUGIN_MESSAGE — this is the EXACT message YOU entered for this\033[0m")
+    print("\033[1;33m>>> manual run. Every release below is parsed from these lines.\033[0m")
+    print("\033[1;33m==================================================================\033[0m")
+    print("\033[33m>>> [INFO] Source: PLUGIN_MESSAGE env var (used as-is, not stripped)\033[0m")
+    print(f"\033[33m>>> [INFO] Size:   {len(lines)} line(s), {len(message)} character(s)\033[0m")
+    print("\033[36m>>> ----------------------- BEGIN PLUGIN_MESSAGE -----------------------\033[0m")
+    for n, line in enumerate(lines, 1):
+        # Number every line and mark whitespace so leading spaces / tabs (which
+        # silently stop a line from matching a commit pattern) are visible.
+        marked = line.replace("\t", "\\t")
+        print(f"\033[36m>>> {n:>3} | {marked}\033[0m")
+    print("\033[36m>>> ------------------------ END PLUGIN_MESSAGE ------------------------\033[0m")
+    print("\033[1;33m>>> If nothing releases below, re-check the message above: a leading\033[0m")
+    print("\033[1;33m>>> space, a wrong type, or a missing [location] makes a line IGNORED.\033[0m")
+    print("\033[1;33m==================================================================\033[0m")
+    print("")
     return message
 
 
