@@ -71,6 +71,41 @@ def _known_commit_types(parsers):
     return types
 
 
+def _normalize_changelog_levels(changelog_level):
+    """
+    Normalize the changelog-level spec into a set of allowed integer depths, or None.
+
+    Accepts:
+      None                   -> None (no depth enforcement)
+      an int (e.g. 2)        -> {2}
+      a str "2"              -> {2}
+      a comma-separated str  -> {2, 3, 4}   (e.g. "2,3,4" or "2, 3, 4")
+      an iterable of ints    -> set(...)
+
+    Raises ValueError if any value is not a non-negative integer, or if a
+    string/iterable spec yields no usable numbers.
+    """
+    if changelog_level is None:
+        return None
+    if isinstance(changelog_level, bool):
+        # bool is a subclass of int — reject it so True/False can't sneak in as 1/0.
+        raise ValueError("changelog level must be an integer, not a bool")
+    if isinstance(changelog_level, int):
+        values = [changelog_level]
+    elif isinstance(changelog_level, str):
+        values = [int(p.strip()) for p in changelog_level.split(",") if p.strip() != ""]
+        if not values:
+            raise ValueError("no changelog levels parsed from string")
+    else:
+        values = [int(x) for x in changelog_level]
+        if not values:
+            raise ValueError("no changelog levels provided")
+    levels = set(values)
+    if any(l < 0 for l in levels):
+        raise ValueError("changelog levels must be non-negative")
+    return levels
+
+
 def parse_pr_body(body, parsers=None, changelog_level=None):
     """
     Parses PR body lines matching: type[loc1, loc2]!: description
@@ -84,13 +119,17 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
           feat[nati]!: add login  ->  feat!: add login
           feat[nati]: add login          ->  feat: add login
 
-    changelog_level (int | None):
-      Enforces the expected depth of every location in the PR body.
-        level 0  -> only root (empty bracket []) is accepted
-        level N  -> locations with exactly N-1 forward slashes:
-                    1 -> "nati"           (0 slashes)
-                    2 -> "plugins/docker" (1 slash)
-                    3 -> "base/infra/x"   (2 slashes)
+    changelog_level (int | str | Iterable[int] | None):
+      Enforces the expected depth of every location in the PR body. May allow a
+      single depth or several at once — pass an int (2), a string ("2"), a
+      comma-separated string ("2,3,4"), or any iterable of ints. It is normalized
+      to a set of allowed depths via _normalize_changelog_levels().
+      Depth is the number of path segments:
+        depth 0  -> root (empty bracket [])
+        depth 1  -> "nati"           (0 slashes)
+        depth 2  -> "plugins/docker" (1 slash)
+        depth 3  -> "base/infra/x"   (2 slashes)
+      A location is accepted iff its depth is one of the allowed depths.
       If ANY location in a line fails the check:
         - Any in-progress continuation from the previous commit is finalized
           (the inner loop already breaks on any commit-pattern line, so the
@@ -113,6 +152,8 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
         print(">>> ERROR: cliff.toml commit_parsers has no valid message patterns — cannot parse commits.")
         return {}
 
+    levels = _normalize_changelog_levels(changelog_level)
+
     bracket_re = re.compile(r'\[([^[\]]*)\]')
 
     def _match_line(current_line):
@@ -130,17 +171,19 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
         return None
 
     def _matches_level(location):
-        """Returns True if location satisfies the required changelog_level."""
-        if changelog_level is None:
+        """True if location's depth is one of the allowed changelog levels.
+
+        Depth = number of path segments: root ("") is depth 0, "nati" is depth 1,
+        "plugins/docker" is depth 2, etc. `levels` is a set of allowed depths, or
+        None to disable the check."""
+        if levels is None:
             return True
-        if changelog_level == 0:
-            return location == ""
         if location == "":
-            return False
+            return 0 in levels
         # Reject empty segments: leading /, trailing /, or consecutive //
         if "" in location.split("/"):
             return False
-        return location.count("/") == changelog_level - 1
+        return (location.count("/") + 1) in levels
 
     result = {}
     lines = body.splitlines() if body else []
@@ -158,10 +201,10 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
             failed = [loc for loc in locations if not _matches_level(loc)]
             if failed:
                 def _level_reason(loc):
-                    if changelog_level == 0:
-                        return f"'{loc}' — non-empty location, level 0 expects empty []"
+                    allowed = ",".join(str(l) for l in sorted(levels))
                     if loc == "":
-                        return f"'' — empty location, a component name is required at level {changelog_level}"
+                        return (f"'' — empty location (depth 0), not in allowed "
+                                f"PLUGIN_CHANGELOG_LEVEL depth(s) [{allowed}]")
                     segments = loc.split("/")
                     if "" in segments:
                         if loc.startswith("/"):
@@ -169,14 +212,10 @@ def parse_pr_body(body, parsers=None, changelog_level=None):
                         if loc.endswith("/"):
                             return f"'{loc}' — trailing slash, missing component name after last '/'"
                         return f"'{loc}' — consecutive '//', missing component name between slashes"
-                    actual = loc.count("/")
-                    expected_slashes = changelog_level - 1
+                    actual_depth = loc.count("/") + 1
                     return (
-                        f"'{loc}' — wrong depth: location has {actual} slash(es) ({actual + 1} path segment(s)), "
-                        f"but PLUGIN_CHANGELOG_LEVEL={changelog_level} requires exactly {expected_slashes} slash(es) "
-                        f"({changelog_level} path segment(s)). "
-                        f"Example of a valid location at level {changelog_level}: "
-                        f"{'/'.join(['component'] * changelog_level)}"
+                        f"'{loc}' — wrong depth: {actual_depth} path segment(s), "
+                        f"but PLUGIN_CHANGELOG_LEVEL allows depth(s) [{allowed}]"
                     )
 
                 reasons = "; ".join(_level_reason(loc) for loc in failed)
@@ -453,7 +492,8 @@ def release():
         missing.append(
             "  PLUGIN_CHANGELOG_LEVEL — integer depth of component locations in your PR body.\n"
             "    Level 0 -> root only: feat[][...]   Level 1 -> top-level: feat[nati][...]\n"
-            "    Level 2 -> nested:    feat[plugins/docker][...]   Example: PLUGIN_CHANGELOG_LEVEL=1"
+            "    Level 2 -> nested:    feat[plugins/docker][...]   Example: PLUGIN_CHANGELOG_LEVEL=1\n"
+            "    May be a comma-separated list to allow several depths at once, e.g. PLUGIN_CHANGELOG_LEVEL=2,3,4"
         )
     if not os.getenv("PLUGIN_BASE_PATH"):
         missing.append(
@@ -468,9 +508,10 @@ def release():
 
     # ── Load env vars ─────────────────────────────────────────────────────────
     try:
-        changelog_level = int(os.getenv("PLUGIN_CHANGELOG_LEVEL"))
+        changelog_levels = _normalize_changelog_levels(os.getenv("PLUGIN_CHANGELOG_LEVEL"))
     except (TypeError, ValueError):
-        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be a non-negative integer (e.g. 1).")
+        print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be a non-negative integer, or a "
+              "comma-separated list of them (e.g. 1 or 2,3,4).")
         return
 
     pr_body = _retrieve_message()
@@ -509,11 +550,11 @@ def release():
 
     _print_cliff_rules(parsers, bump_cfg, global_toml)
 
-    print(f">>> PLUGIN_CHANGELOG_LEVEL={changelog_level}")
+    print(f">>> PLUGIN_CHANGELOG_LEVEL={','.join(str(l) for l in sorted(changelog_levels))}")
     print(f">>> PLUGIN_BASE_PATH='{root_path}' — root directory; all [location] paths are resolved relative to this")
 
     # ── Parse PR body ─────────────────────────────────────────────────────────
-    location_to_commits = parse_pr_body(pr_body, parsers, changelog_level=changelog_level)
+    location_to_commits = parse_pr_body(pr_body, parsers, changelog_level=changelog_levels)
 
     if not location_to_commits:
         print(">>> No release commits detected in PR Body.")

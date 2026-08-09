@@ -1089,6 +1089,72 @@ class TestChangelogLevel(unittest.TestCase):
         self.assertEqual(result[""], {"feat: release root"})
         self.assertNotIn("nati", result)
 
+    def test_3a_multiple_levels_accepts_several_depths(self):
+        """
+        Checks: changelog_level="1,2" accepts BOTH top-level (depth 1) and
+                one-level-nested (depth 2) locations in the same run.
+
+        Why this matters: a monorepo that versions both flat components (nati)
+        and nested ones (plugins/docker) in one release — the whole point of
+        allowing an array of depths instead of a single fixed one.
+
+        Body (changelog_level="1,2"):
+          feat[nati]: add dashboard       ← depth 1 → in {1,2} → ACCEPT
+          fix[plugins/docker]: fix socket ← depth 2 → in {1,2} → ACCEPT
+
+        Expected: both appear.
+        """
+        body = (
+            "feat[nati]: add dashboard\n"
+            "fix[plugins/docker]: fix socket\n"
+        )
+        result = parse_pr_body(body, PARSERS, changelog_level="1,2")
+        self.assertIn("nati", result)
+        self.assertIn("plugins/docker", result)
+        self.assertEqual(result["nati"], {"feat: add dashboard"})
+        self.assertEqual(result["plugins/docker"], {"fix: fix socket"})
+
+    def test_3b_multiple_levels_rejects_depth_outside_set(self):
+        """
+        Checks: changelog_level="1,3" accepts depth 1 and depth 3 but still
+                SKIPS a depth-2 location that falls between the allowed values —
+                the set is exact-membership, not a min/max range.
+
+        Body (changelog_level="1,3"):
+          feat[nati]: a                        ← depth 1 → ACCEPT
+          feat[base/uv/0.11.29]: b             ← depth 3 → ACCEPT
+          feat[plugins/docker]: c              ← depth 2 → not in {1,3} → SKIP
+        """
+        body = (
+            "feat[nati]: a\n"
+            "feat[base/uv/0.11.29]: b\n"
+            "feat[plugins/docker]: c\n"
+        )
+        result = parse_pr_body(body, PARSERS, changelog_level="1,3")
+        self.assertIn("nati", result)
+        self.assertIn("base/uv/0.11.29", result)
+        self.assertNotIn("plugins/docker", result)
+
+    def test_3c_normalize_changelog_levels_forms(self):
+        """
+        Checks: _normalize_changelog_levels() coerces every supported input form
+                (int, plain str, comma-separated str with spaces, iterable) into a
+                set of ints, rejects bad input, and returns None for None.
+        """
+        norm = release_module._normalize_changelog_levels
+        self.assertIsNone(norm(None))
+        self.assertEqual(norm(2), {2})
+        self.assertEqual(norm("2"), {2})
+        self.assertEqual(norm("2,3,4"), {2, 3, 4})
+        self.assertEqual(norm(" 2 , 3 ,4 "), {2, 3, 4})
+        self.assertEqual(norm([1, 2, 2]), {1, 2})
+        with self.assertRaises(ValueError):
+            norm("abc")
+        with self.assertRaises(ValueError):
+            norm("-1")
+        with self.assertRaises(ValueError):
+            norm("")
+
     def test_4_multilocation_skipped_if_any_location_fails(self):
         """
         Checks: if ANY location in a comma-separated list fails the level check,

@@ -192,14 +192,14 @@ When a wildcard is used, the plugin prints both the pre-expansion and post-expan
 
 ## 4. PLUGIN_CHANGELOG_LEVEL enforcement
 
-Every `[location]` must match the declared path depth. If any location in a multi-location line fails, **the entire line is skipped**.
+Every `[location]` must match one of the declared path depths. If any location in a multi-location line fails, **the entire line is skipped**.
 
 | Level | Accepts | Example |
 |-------|---------|---------|
 | `0` | root only | `feat[]: msg` |
 | `1` | top-level dirs | `feat[nati]: msg` |
 | `2` | one level nested | `feat[plugins/docker]: msg` |
-| `N` | N−1 slashes | `feat[a/b/.../z]: msg` |
+| `N` | depth `N` (N−1 slashes) | `feat[a/b/.../z]: msg` |
 
 ```
 PLUGIN_CHANGELOG_LEVEL=1
@@ -208,6 +208,22 @@ feat[nati]: add dashboard          → ACCEPT (0 slashes)
 fix[plugins/docker]: fix socket    → SKIP  (1 slash, expected 0)
 feat[nati, plugins/docker]: shared → SKIP  (plugins/docker fails — whole line skipped)
 feat[nati, harel]: auth update     → ACCEPT (both have 0 slashes)
+```
+
+### Allowing several depths at once
+
+`PLUGIN_CHANGELOG_LEVEL` may be a **comma-separated list** of depths. A location is accepted
+if its depth matches **any** value in the set (exact membership — not a min/max range). This lets
+a single run release components living at different nesting levels — e.g. flat plugins at depth 2
+alongside deeply-nested base images at depth 4.
+
+```
+PLUGIN_CHANGELOG_LEVEL=2,4
+
+feat[plugins/docker]: fix socket             → ACCEPT (depth 2 ∈ {2,4})
+feat[base/uv/0.11.29/python-310]: uv image   → ACCEPT (depth 4 ∈ {2,4})
+feat[nati]: add dashboard                    → SKIP   (depth 1 ∉ {2,4})
+feat[base/infra/x]: rules                    → SKIP   (depth 3 ∉ {2,4})
 ```
 
 ---
@@ -219,7 +235,7 @@ feat[nati, harel]: auth update     → ACCEPT (both have 0 slashes)
 | Variable | Description |
 |----------|-------------|
 | `PLUGIN_BASE_PATH` | Root directory all `[location]` paths are resolved against. Getting this wrong silently breaks tag names, CHANGELOG paths, and directory resolution. When in doubt use `"."` and write full relative paths in `[]`. |
-| `PLUGIN_CHANGELOG_LEVEL` | Enforces the expected path depth of every `[location]`. Lines with non-matching depth are skipped. If not set the plugin exits with code 1. |
+| `PLUGIN_CHANGELOG_LEVEL` | Enforces the expected path depth of every `[location]`. A single depth (`2`) or a comma-separated set of depths (`2,3,4`); a location is accepted if its depth is in the set. Lines with non-matching depth are skipped. If not set the plugin exits with code 1. |
 
 ### Message retrieval
 
