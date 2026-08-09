@@ -447,7 +447,11 @@ def _retrieve_manual_message():
     if not message:
         print(">>> ERROR: PLUGIN_MESSAGE is empty — required for a manual run.")
         return None
-    print(">>> [INFO] Using PLUGIN_MESSAGE env var directly")
+    print(">>> [INFO] Using PLUGIN_MESSAGE env var directly. Message written by the user:")
+    print("\033[36m--- BEGIN PLUGIN_MESSAGE ---\033[0m")
+    for line in message.splitlines():
+        print(f"\033[36m    {line}\033[0m")
+    print("\033[36m--- END PLUGIN_MESSAGE ---\033[0m")
     return message
 
 

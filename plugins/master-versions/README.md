@@ -244,7 +244,7 @@ The plugin retrieves the message to parse itself — there's no file-path input 
 | `CI_PIPELINE_EVENT` | Source | Required variables |
 |---|---|---|
 | `pull_request` | Fetched from the Bitbucket Server REST API (`GET .../pull-requests/{id}`), using the PR's `description` field. | `PLUGIN_BITBUCKET_TOKEN`, `CI_FORGE_URL`, `CI_REPO_OWNER`, `CI_REPO_NAME`, `CI_COMMIT_PULL_REQUEST` |
-| `manual` (default) | The `PLUGIN_MESSAGE` env var, used as-is. | `PLUGIN_MESSAGE` |
+| `manual` (default) | The `PLUGIN_MESSAGE` env var, used as-is. On a manual run the plugin echoes the full message back (between `--- BEGIN PLUGIN_MESSAGE ---` / `--- END PLUGIN_MESSAGE ---` markers) so you can see exactly what was submitted. | `PLUGIN_MESSAGE` |
 | any other event (e.g. `push`) | `git log -1 --pretty=%B`. If the commit message contains a `DESCRIPTION` section (the custom merge-commit template — see the "Pipeline Integration" notes), only the text after that marker is used; otherwise the full commit message is used. | *(none — reads local git history)* |
 
 The plugin exits with code 1 if the message can't be determined (e.g. a missing required variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is retrieved is also written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
