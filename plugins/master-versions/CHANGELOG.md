@@ -1,3 +1,11 @@
+## [plugins-master-versions-v1.0.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.0.0) - 2026-08-09 11:43
+
+
+### ✨ Features
+
+* feat: loudly echo PLUGIN_MESSAGE on manual runs
+
+
 ## [plugins-master-versions-v1.0.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.0.0) - 2026-08-09 09:59
 
 
