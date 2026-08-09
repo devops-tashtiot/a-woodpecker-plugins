@@ -1,3 +1,11 @@
+## [plugins-master-versions-v1.0.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.0.0) - 2026-08-09 14:04
+
+
+### ✨ Features
+
+* feat: diagnose tag resolution
+
+
 ## [plugins-master-versions-v1.0.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.0.0) - 2026-08-09 13:04
 
 
