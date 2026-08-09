@@ -1446,19 +1446,18 @@ class TestBranchResolution(unittest.TestCase):
     def test_2_pr_event_fetches_target_branch_no_tag_flags(self):
         """
         Checks: CI_PIPELINE_EVENT=pull_request + CI_COMMIT_TARGET_BRANCH=main
-                fetches 'main' into a fresh remote-tracking ref, and that fetch
-                command contains neither --tags nor --no-tags (relies on git's
-                default auto-follow).
+                fetches 'main' into a fresh remote-tracking ref, with NEITHER
+                --tags nor --no-tags (relies on git's default auto-follow, see
+                HOTFIX_TAG_RESOLUTION.md), authenticated with a Bearer header.
         """
         mock_cmd = self._run({
             "CI_PIPELINE_EVENT":       "pull_request",
             "CI_COMMIT_TARGET_BRANCH": "main",
         })
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
-        self.assertIn("fetch origin main:refs/remotes/origin/main", calls_str)
         # A pull_request run has PLUGIN_BITBUCKET_TOKEN set, so the fetch must be
         # authenticated with a Bearer header (see Bitbucket DC token gotcha).
-        self.assertIn('git -c http.extraHeader="Authorization: Bearer tok" fetch origin main', calls_str)
+        self.assertIn('git -c http.extraHeader="Authorization: Bearer tok" fetch origin main:refs/remotes/origin/main', calls_str)
         # Step 1 tag lookup should target the fetched branch, not HEAD.
         self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/main", calls_str)
 
@@ -1466,13 +1465,11 @@ class TestBranchResolution(unittest.TestCase):
         """
         Checks: without a pull_request event, CI_COMMIT_BRANCH still gets
                 fetched into refs/remotes/origin/<branch> (even though it's
-                already checked out) — required for tag auto-follow to
-                actually fire — and the tag lookup targets that fetched ref,
-                not HEAD directly.
+                already checked out) — required for tag auto-follow to fire —
+                and the tag lookup targets that fetched ref, not HEAD directly.
         """
         mock_cmd = self._run({"CI_COMMIT_BRANCH": "hotfix"})
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
-        self.assertIn("fetch origin hotfix:refs/remotes/origin/hotfix", calls_str)
         # This manual run has no PLUGIN_BITBUCKET_TOKEN, so no auth header is
         # added and the fetch stays a plain `git fetch`.
         self.assertIn("git fetch origin hotfix:refs/remotes/origin/hotfix", calls_str)
@@ -1558,7 +1555,7 @@ class TestHotfixBranchTagResolution(unittest.TestCase):
         would misrepresent what CI actually does.
 
         The release message is injected via the "manual" retrieval path
-        (CI_PIPELINE_EVENT=manual + PLUGIN_MESSAGE) by default. For a
+        (CI_PIPELINE_EVarENT=manual + PLUGIN_MESSAGE) by default. For a
         pull_request event, urlopen is mocked to hand back `message` as the
         PR description instead, since there's no real Bitbucket server here.
         """

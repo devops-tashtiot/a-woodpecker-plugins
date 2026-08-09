@@ -611,29 +611,30 @@ def release():
                 print("      " + commit.replace("\n", "\n      "))
 
     # ── Resolve branch for ancestry-correct tag lookup ────────────────────────
-    # A plain `git fetch` (no --tags/--no-tags) auto-follows a tag only if its
-    # target commit is already present locally as a result of that fetch — this
-    # is what keeps tag lookups scoped to the right line of history instead of
-    # picking up tags from unrelated branches. The clone step's own `tags:`
-    # setting can persist as remote.origin.tagOpt and silently block this, so
-    # it's reset here regardless of what the CI clone step configured.
+    # See HOTFIX_TAG_RESOLUTION.md for the full design rationale. In short: a
+    # plain `git fetch` (NO --tags/--no-tags) lets git's tag auto-follow attach
+    # only tags whose commit is reachable from the fetched branch — which keeps
+    # tag lookups branch-scoped (a mainline nati-v2.0.0 never lands on a hotfix
+    # cut from nati-v1.0.0) WITHOUT any custom filtering. Explicitly fetching
+    # --tags was tried and rejected: it materializes those unrelated tags and
+    # git-cliff's --bump then picks the globally-highest one, breaking hotfix
+    # resolution.
+    #
+    # The clone step's `tags: false` can persist as remote.origin.tagOpt=--no-tags
+    # and block auto-follow, so reset it defensively first.
     run_command("git config --unset-all remote.origin.tagOpt")
 
     is_pr = os.getenv("CI_PIPELINE_EVENT") == "pull_request"
     resolve_branch = os.getenv("CI_COMMIT_TARGET_BRANCH") if is_pr else os.getenv("CI_COMMIT_BRANCH")
 
-    # Always fetch into an explicit refs/remotes/origin/<branch> destination —
-    # even for the branch already checked out. Tag auto-follow only fires
-    # during an actual fetch negotiation; having the commit data already
-    # present locally (e.g. via a depth:0 clone) is not enough on its own, and
-    # a plain re-fetch of an already-tracked ref is treated as a no-op that
-    # skips tag auto-follow entirely. An explicit destination refspec forces
-    # a real negotiation, which is what attaches the correct tag.
+    # Fetch the branch into an explicit refs/remotes/origin/<branch> destination
+    # (auto-follow only fires during a real fetch negotiation, which an explicit
+    # destination refspec forces even for the already-checked-out branch).
+    #
     # This step's git has no Bitbucket credentials of its own (the clone step's
     # plugin-git image holds them, not this image), so a plain `git fetch`
-    # against Bitbucket returns 401 -> "could not read Username" and tag
-    # auto-follow never happens. Authenticate the fetch with the same
-    # PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
+    # against Bitbucket returns 401 -> "could not read Username". Authenticate
+    # with the same PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
     # `Authorization: Bearer` header via `-c http.extraHeader` — the only scheme
     # Bitbucket DC HTTP tokens accept, and the same pattern the mirror-to-github
     # pipeline uses. The header only affects http(s) transports, so it's inert
@@ -710,6 +711,12 @@ def release():
 
         # ── STEP 2: CALCULATE VERSION ─────────────────────────────────────────
         if latest_tag:
+            # --tag-pattern stays the FULL unrestricted component glob (never
+            # narrowed) — git-cliff validates the computed next version against
+            # it too, so a narrowed pattern would reject a breaking bump crossing
+            # e.g. 1.0.0 -> 2.0.0 (see HOTFIX_TAG_RESOLUTION.md §2). Branch
+            # scoping is handled by which tags physically exist after the
+            # auto-follow fetch, not by this regex.
             bump_cmd = " ".join(filter(None, [
                 cliff_cmd_base,
                 f"--tag-pattern '{component_tag_pattern}'",
