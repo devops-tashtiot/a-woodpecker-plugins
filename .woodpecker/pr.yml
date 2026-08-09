@@ -19,7 +19,7 @@ steps:
   #     PLUGIN_BASE_PATH: plugins
 
   - name: Run release
-    image: harbor.devopstashtiot.page/plugins/master-versions:plugins-master-versions-v1.0.0
+    image: harbor.devopstashtiot.page/plugins/master-versions:v1.0.0
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
