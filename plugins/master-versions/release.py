@@ -630,9 +630,21 @@ def release():
     # a plain re-fetch of an already-tracked ref is treated as a no-op that
     # skips tag auto-follow entirely. An explicit destination refspec forces
     # a real negotiation, which is what attaches the correct tag.
+    # This step's git has no Bitbucket credentials of its own (the clone step's
+    # plugin-git image holds them, not this image), so a plain `git fetch`
+    # against Bitbucket returns 401 -> "could not read Username" and tag
+    # auto-follow never happens. Authenticate the fetch with the same
+    # PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
+    # `Authorization: Bearer` header via `-c http.extraHeader` — the only scheme
+    # Bitbucket DC HTTP tokens accept, and the same pattern the mirror-to-github
+    # pipeline uses. The header only affects http(s) transports, so it's inert
+    # for a local-path remote or the later local `git describe`/git-cliff calls.
+    token = os.getenv("PLUGIN_BITBUCKET_TOKEN", "")
+    auth_opt = f'-c http.extraHeader="Authorization: Bearer {token}" ' if token else ""
+
     resolved_ref = "HEAD"
     if resolve_branch:
-        fetch_result = run_command(f"git fetch origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
+        fetch_result = run_command(f"git {auth_opt}fetch origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
         if fetch_result.returncode == 0:
             resolved_ref = f"refs/remotes/origin/{resolve_branch}"
             print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")

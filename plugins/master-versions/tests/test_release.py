@@ -1455,7 +1455,10 @@ class TestBranchResolution(unittest.TestCase):
             "CI_COMMIT_TARGET_BRANCH": "main",
         })
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
-        self.assertIn("git fetch origin main:refs/remotes/origin/main", calls_str)
+        self.assertIn("fetch origin main:refs/remotes/origin/main", calls_str)
+        # A pull_request run has PLUGIN_BITBUCKET_TOKEN set, so the fetch must be
+        # authenticated with a Bearer header (see Bitbucket DC token gotcha).
+        self.assertIn('git -c http.extraHeader="Authorization: Bearer tok" fetch origin main', calls_str)
         # Step 1 tag lookup should target the fetched branch, not HEAD.
         self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/main", calls_str)
 
@@ -1469,7 +1472,11 @@ class TestBranchResolution(unittest.TestCase):
         """
         mock_cmd = self._run({"CI_COMMIT_BRANCH": "hotfix"})
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("fetch origin hotfix:refs/remotes/origin/hotfix", calls_str)
+        # This manual run has no PLUGIN_BITBUCKET_TOKEN, so no auth header is
+        # added and the fetch stays a plain `git fetch`.
         self.assertIn("git fetch origin hotfix:refs/remotes/origin/hotfix", calls_str)
+        self.assertNotIn("http.extraHeader", calls_str)
         self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/hotfix", calls_str)
 
     def test_4_neither_var_set_falls_back_to_head(self):

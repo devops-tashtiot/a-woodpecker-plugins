@@ -249,6 +249,8 @@ The plugin retrieves the message to parse itself — there's no file-path input 
 
 The plugin exits with code 1 if the message can't be determined (e.g. a missing required variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is retrieved is also written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
 
+**`PLUGIN_BITBUCKET_TOKEN` is also used for tag resolution.** Before processing any component, the plugin does an authenticated `git fetch` of the resolved branch so git's tag auto-follow pulls the existing version tags (the CI clone uses `tags: false`, so the workspace starts with none). The plugin's own step image has no Bitbucket credentials of its own, so the token is sent as an `Authorization: Bearer <token>` header via `git -c http.extraHeader=…` (the only scheme Bitbucket DC HTTP tokens accept). Without it the fetch 401s, no tags are visible, and every component is mistakenly treated as a first release (recreating `…-v1.0.0` instead of bumping). Set `PLUGIN_BITBUCKET_TOKEN` on any event where you want correct version bumps, not just `pull_request`.
+
 ### Optional
 
 | Variable | Default | Description |
