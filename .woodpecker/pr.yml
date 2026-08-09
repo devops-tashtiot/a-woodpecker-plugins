@@ -27,7 +27,7 @@ steps:
         from_secret: bitbucket_token
       PLUGIN_MESSAGE: "${MESSAGE}"
       PLUGIN_VERBOSE: 2
-      PLUGIN_CHANGELOG_LEVEL: "2,3,4"
+      PLUGIN_CHANGELOG_LEVEL: 2
 
   # - name: Release diff check
   #   image: netanelzucaim123/master-versions-vs-changed-files:latest
