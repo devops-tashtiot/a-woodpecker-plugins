@@ -462,7 +462,6 @@ def _retrieve_manual_message():
     print("\033[1;33m>>> manual run. Every release below is parsed from these lines.\033[0m")
     print("\033[1;33m==================================================================\033[0m")
     print("\033[33m>>> [INFO] Source: PLUGIN_MESSAGE env var (used as-is, not stripped)\033[0m")
-    print(f"\033[33m>>> [INFO] Size:   {len(lines)} line(s), {len(message)} character(s)\033[0m")
     print("\033[36m>>> ----------------------- BEGIN PLUGIN_MESSAGE -----------------------\033[0m")
     for n, line in enumerate(lines, 1):
         # Number every line and mark whitespace so leading spaces / tabs (which
