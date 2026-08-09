@@ -650,6 +650,23 @@ def release():
             print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")
         else:
             print(f">>> WARNING: could not fetch branch '{resolve_branch}' ({fetch_result.stderr.strip()}) — falling back to HEAD")
+        # git prints fetched ref/tag updates (e.g. "* [new tag] ...") to stderr.
+        if fetch_result.stderr.strip():
+            print(">>> [DIAG] fetch stderr (ref/tag updates):")
+            for _l in fetch_result.stderr.strip().splitlines():
+                print(f"    {_l}")
+
+    # ── Diagnostics: the exact workspace state that decides tag resolution ─────
+    # Prints once per run so a failing CI run reveals WHY describe finds no tag:
+    # a shallow clone (severs ancestry), tags simply not present (fetch/
+    # auto-follow didn't land them), or an ancestry mismatch.
+    _shallow   = run_command("git rev-parse --is-shallow-repository").stdout.strip()
+    _all_tags  = [t for t in run_command("git tag -l").stdout.strip().splitlines() if t]
+    _commits   = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
+    print(f">>> [DIAG] resolved_ref={resolved_ref}  shallow={_shallow}  "
+          f"commits_reachable={_commits}  total_tags_present={len(_all_tags)}")
+    if _all_tags:
+        print(f">>> [DIAG] tags present: {sorted(_all_tags)}")
 
     # ── Process each location ─────────────────────────────────────────────────
     created_tags = []
@@ -689,6 +706,17 @@ def release():
         first_tag = f"{tag_prefix}{initial_tag_version}"
         print(f">>> [INFO] Latest tag (base): "
               f"{latest_tag or f'(none — first release → will use {first_tag})'}")
+        if not latest_tag:
+            # Distinguish "tag truly absent" from "tag present but describe can't
+            # reach it" (ancestry severed, e.g. shallow clone or orphaned commit).
+            _matching = [t for t in run_command(f"git tag -l '{tag_glob}'").stdout.strip().splitlines() if t]
+            print(f">>> [DIAG] describe stderr: {existing_tags_result.stderr.strip()}")
+            print(f">>> [DIAG] tags matching glob '{tag_glob}' present in repo: {_matching}")
+            if _matching:
+                _t = _matching[0]
+                _anc = run_command(f"git merge-base --is-ancestor {_t} {resolved_ref}")
+                print(f">>> [DIAG] '{_t}' is-ancestor of {resolved_ref}: "
+                      f"{'yes' if _anc.returncode == 0 else 'NO (unreachable → describe skips it)'}")
 
         # Build --with-commit args (shell-safe quoting handles special chars)
         all_commits = sorted(commits)
