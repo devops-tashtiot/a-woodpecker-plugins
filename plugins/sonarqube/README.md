@@ -5,7 +5,7 @@ analysis against a SonarQube server. The scanner (`sonar-scanner-7.1.0.4889`) is
 image at build time (downloaded from the public SonarSource CDN); the entrypoint `sonar-scan.sh`
 builds the `sonar-scanner` command from the settings below and runs it.
 
-The image is built `FROM harbor.devopstashtiot.page/base/ubi9:latest`, which already trusts the
+The image is built `FROM harbor.devopstashtiot.page/base/ubi9:v1.0.0`, which already trusts the
 Cloudflare Origin CA, so at run time it can reach a `*.devopstashtiot.page` SonarQube host over
 its Origin-CA-issued cert. The build itself needs outbound internet to fetch the scanner zip
 from `binaries.sonarsource.com`.

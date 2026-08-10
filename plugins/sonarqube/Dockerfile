@@ -1,4 +1,4 @@
-FROM harbor.devopstashtiot.page/base/ubi9:latest
+FROM harbor.devopstashtiot.page/base/ubi9:v1.0.0
 
 # SonarQube scanner plugin. Base is the platform's UBI9 image (Cloudflare Origin CA already in
 # its trust store). The SonarScanner CLI is downloaded at build time from the public SonarSource
