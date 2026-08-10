@@ -12,7 +12,14 @@ clone:
       partial: false
 
 when:
+  # Woodpecker does NOT honor `[skip ci]` in a commit message for pull_request
+  # events (only for push/tag). Without this guard, the "Push changelogs to Git"
+  # step below force-pushes a `[skip ci]` changelog commit to the PR's own source
+  # branch, which fires another pull_request event → another build → an infinite
+  # loop. This explicit evaluate makes the `[skip ci]` marker actually take
+  # effect for PRs, so the CI's own changelog push does not re-trigger the build.
   - event: pull_request
+    evaluate: 'not (CI_COMMIT_MESSAGE contains "[skip ci]")'
 
 steps:
   # - name: Get changed dirs
