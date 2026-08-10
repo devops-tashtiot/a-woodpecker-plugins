@@ -28,7 +28,7 @@ steps:
   #     PLUGIN_BASE_PATH: plugins
 
   - name: Run release
-    image: netanelzucaim123/master-versions:v1.0.3
+    image: netanelzucaim123/master-versions:v1.0.4
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
