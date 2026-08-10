@@ -727,8 +727,14 @@ def release():
         print("")
         print(f"\033[1;31m--- Processing: {display_name} ---\033[0m")
         print("")
-        # Skip non-existent directories (root is always assumed to exist)
-        if not is_root and not os.path.isdir(full_path):
+        # Skip components whose directory doesn't exist — but only when the
+        # working tree IS the branch being released (root is always assumed to
+        # exist). For a pull_request we've temporarily checked out the TARGET
+        # branch, on which a brand-new component added by the PR legitimately
+        # doesn't exist yet. In that case don't skip: let it fall through to a
+        # first release (the default PLUGIN_INITIAL_TAG), and PHASE B writes its
+        # CHANGELOG on the restored PR branch where the directory does exist.
+        if not is_root and not orig_head and not os.path.isdir(full_path):
             print(f">>> SKIP: Directory '{location}' does not exist.")
             continue
 
