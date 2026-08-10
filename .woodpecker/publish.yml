@@ -78,11 +78,20 @@ steps:
       - git config --global safe.directory '*'
       - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
       - |
-        if ! git diff --cached --quiet; then
-          git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
-          git push --force origin HEAD:main
+        # Guard: only mutate `main` (changelog commit + release tags) when the run
+        # is actually ON main. A manual run on a hotfix/other branch must NOT
+        # force-push its content onto main — that corrupts main and drags release
+        # tags off the branch's ancestry. CI_COMMIT_BRANCH is escaped `$${...}` so
+        # Woodpecker doesn't substitute it away before the shell sees it.
+        if [ "$${CI_COMMIT_BRANCH}" = "main" ]; then
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): update CHANGELOG.md files [skip ci]"
+            git push --force origin HEAD:main
+          else
+            echo "No changelog changes to commit."
+          fi
+          for tag in $(cat new_tags.txt); do git tag -f "$tag"; done
+          git push --force --tags origin
         else
-          echo "No changelog changes to commit."
+          echo ">>> Not on main (CI_COMMIT_BRANCH='$${CI_COMMIT_BRANCH}') — skipping changelog/tag push to protect main."
         fi
-      - for tag in $(cat new_tags.txt); do git tag -f "$tag"; done
-      - git push --force --tags origin
