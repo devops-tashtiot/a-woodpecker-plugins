@@ -642,14 +642,30 @@ def release():
     token = os.getenv("PLUGIN_BITBUCKET_TOKEN", "")
     auth_opt = f'-c http.extraHeader="Authorization: Bearer {token}" ' if token else ""
 
+    # Make tag resolution work at ANY clone depth (depth: 0 / 1 / 4 / …). A
+    # shallow clone severs ancestry at the graft boundary, so `git describe`,
+    # git-cliff `--use-branch-tags`, and the PR target-branch checkout all fail
+    # on it. If the workspace is shallow, unshallow the fetch to restore full
+    # history. `--unshallow` errors on an already-complete repo, so it is only
+    # added when the repo is actually shallow.
+    is_shallow    = run_command("git rev-parse --is-shallow-repository").stdout.strip() == "true"
+    unshallow_opt = "--unshallow " if is_shallow else ""
+    if is_shallow:
+        print(">>> [INFO] Shallow clone detected — unshallowing to restore full history for "
+              "ancestry-correct tag resolution (self-heals depth: 1 / 4 / any positive depth).")
+
     resolved_ref = "HEAD"
     if resolve_branch:
-        fetch_result = run_command(f"git {auth_opt}fetch origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
+        fetch_result = run_command(f"git {auth_opt}fetch {unshallow_opt}origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
         if fetch_result.returncode == 0:
             resolved_ref = f"refs/remotes/origin/{resolve_branch}"
             print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")
         else:
             print(f">>> WARNING: could not fetch branch '{resolve_branch}' ({fetch_result.stderr.strip()}) — falling back to HEAD")
+    elif is_shallow:
+        # No branch to resolve against (e.g. a bare local run), but shallow —
+        # deepen the current checkout so describe still has ancestry.
+        run_command(f"git {auth_opt}fetch --unshallow origin")
         # git prints fetched ref/tag updates (e.g. "* [new tag] ...") to stderr.
         if fetch_result.stderr.strip():
             print(">>> [DIAG] fetch stderr (ref/tag updates):")
