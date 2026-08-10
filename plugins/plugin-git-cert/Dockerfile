@@ -1,4 +1,4 @@
-FROM docker.io/woodpeckerci/plugin-git
+FROM docker.io/woodpeckerci/plugin-git:2.9.3
 
 # The clone step reaches Bitbucket internally via ingress-nginx, which presents a
 # Cloudflare Origin CA-issued cert (not publicly trusted). Baking the CA in here means
