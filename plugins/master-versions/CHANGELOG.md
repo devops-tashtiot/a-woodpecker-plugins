@@ -1,3 +1,11 @@
+## [plugins-master-versions-v1.2.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.2.0) - 2026-08-10 11:11
+
+
+### ✨ Features
+
+* feat: verify tag resolution with v1.0.3
+
+
 ## [plugins-master-versions-v1.1.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.1.0) - 2026-08-09 14:30
 
 
