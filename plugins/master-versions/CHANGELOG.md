@@ -1,3 +1,11 @@
+## [plugins-master-versions-v2.0.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v2.0.0) - 2026-08-10 13:01
+
+
+### 🚀 🚀 Breaking Changes
+
+* breaking: persist v2.0.0 hotfix
+
+
 ## [plugins-master-versions-v1.0.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.0.0) - 2026-08-09 09:59
 
 
