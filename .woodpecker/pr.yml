@@ -2,7 +2,7 @@ clone:
   git:
     image: harbor.devopstashtiot.page/plugins/plugin-git-cert:prod
     settings:
-      depth: 0
+      depth: 1
       tags: false
       # partial-clone (plugin-git default ON) forces `--depth=1 --filter=tree:0`,
       # which makes a SHALLOW clone and silently ignores `depth: 0`. A shallow
