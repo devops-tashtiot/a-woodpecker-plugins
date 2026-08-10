@@ -668,8 +668,26 @@ def release():
     if _all_tags:
         print(f">>> [DIAG] tags present: {sorted(_all_tags)}")
 
-    # ── Process each location ─────────────────────────────────────────────────
-    created_tags = []
+    # ── PHASE A: calculate the next version for every component ────────────────
+    # STEP 1 (describe) + STEP 2 (git-cliff --bump) only — no files are written
+    # here. For a pull_request we check out the TARGET branch first, so
+    # --use-branch-tags resolves the version against the target's history (e.g.
+    # main), not the PR branch's, then restore afterward. Writing CHANGELOG.md is
+    # deferred to PHASE B on the original working branch so those files persist
+    # for the later "Push changelogs to Git" step.
+    orig_head = None
+    if is_pr and resolve_branch and resolved_ref != "HEAD":
+        orig_head = run_command("git rev-parse HEAD").stdout.strip() or None
+        checkout = run_command(f"git checkout --detach {resolved_ref}")
+        if checkout.returncode == 0:
+            print(f">>> [INFO] PR build: checked out target branch '{resolve_branch}' "
+                  f"to calculate versions against it (will restore afterward)")
+        else:
+            print(f">>> WARNING: could not check out target '{resolve_branch}' "
+                  f"({checkout.stderr.strip()}) — calculating against the PR branch instead")
+            orig_head = None
+
+    release_plan = []
     for location in sorted(location_to_commits):
         commits = location_to_commits[location]
         is_root = (location == "")
@@ -742,12 +760,17 @@ def release():
             # --tag-pattern stays the FULL unrestricted component glob (never
             # narrowed) — git-cliff validates the computed next version against
             # it too, so a narrowed pattern would reject a breaking bump crossing
-            # e.g. 1.0.0 -> 2.0.0 (see HOTFIX_TAG_RESOLUTION.md §2). Branch
-            # scoping is handled by which tags physically exist after the
-            # auto-follow fetch, not by this regex.
+            # e.g. 1.0.0 -> 2.0.0 (see HOTFIX_TAG_RESOLUTION.md §2).
+            # --use-branch-tags makes git-cliff consider only tags reachable from
+            # the checked-out HEAD, so branch scoping is correct even when the
+            # clone brought EVERY tag (tags: true). With tags: false only the
+            # ancestry tags are present, so it's a harmless no-op. HEAD is the
+            # right branch here: the current branch for a normal run, or the
+            # target branch we checked out above for a pull_request.
             bump_cmd = " ".join(filter(None, [
                 cliff_cmd_base,
                 f"--tag-pattern '{component_tag_pattern}'",
+                "--use-branch-tags",
                 "--bump --bumped-version",
                 bump_commit_args,
                 "-- HEAD..HEAD",
@@ -782,18 +805,43 @@ def release():
             new_tag = f"{tag_prefix}{initial_tag_version}"
             print(f">>> [INFO] No existing tag — first release: {new_tag}")
 
+        # PHASE A only records what PHASE B needs — no CHANGELOG is written until
+        # we're back on the original working branch (see PHASE B below).
+        release_plan.append({
+            "display_name":          display_name,
+            "new_tag":               new_tag,
+            "with_commit_args":      with_commit_args,
+            "full_path":             full_path,
+            "component_tag_pattern": component_tag_pattern,
+        })
+
+    # Restore the original checkout before writing any files (only moved for PRs).
+    if orig_head:
+        run_command(f"git checkout --detach {orig_head}")
+        print(f">>> [INFO] Restored original checkout ({orig_head[:12]}) after version calculation")
+
+    # ── PHASE B: write each component's CHANGELOG on the working branch ────────
+    created_tags = []
+    for item in release_plan:
+        display_name          = item["display_name"]
+        new_tag               = item["new_tag"]
+        with_commit_args      = item["with_commit_args"]
+        full_path             = item["full_path"]
+        component_tag_pattern = item["component_tag_pattern"]
+
         # ── STEP 3: GENERATE CHANGELOG ────────────────────────────────────────
         changelog_path = os.path.join(full_path, "CHANGELOG.md")
         if os.path.exists(changelog_path):
             output_flag = f"--prepend {changelog_path}"
-            print(f">>> [INFO] CHANGELOG exists — using --prepend")
+            print(f">>> [INFO] {display_name}: CHANGELOG exists — using --prepend")
         else:
             output_flag = f"--output {changelog_path}"
-            print(f">>> [INFO] CHANGELOG not found — using --output")
+            print(f">>> [INFO] {display_name}: CHANGELOG not found — using --output")
 
         cliff_cmd = " ".join(filter(None, [
             cliff_cmd_base,
             f"--tag-pattern '{component_tag_pattern}'",
+            "--use-branch-tags",
             f"--tag '{new_tag}'",
             with_commit_args,
             output_flag,

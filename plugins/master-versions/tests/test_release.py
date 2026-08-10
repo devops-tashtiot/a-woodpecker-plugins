@@ -1546,7 +1546,7 @@ class TestHotfixBranchTagResolution(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.src_dir, ignore_errors=True)
 
-    def _clone_and_run(self, message, extra_env):
+    def _clone_and_run(self, message, extra_env, all_tags=False):
         """
         Reproduces Woodpecker's actual plugin-git clone mechanism -- `git init`
         + `git fetch --no-tags origin <ref>` (matching tags: false), NOT a
@@ -1554,8 +1554,13 @@ class TestHotfixBranchTagResolution(unittest.TestCase):
         --single-branch) fetches every branch regardless of the tags flag and
         would misrepresent what CI actually does.
 
+        When all_tags=True, every tag from every branch is additionally fetched
+        into the workspace (simulating a `tags: true` clone) — including
+        nati-v2.0.0, which is NOT in hotfix's ancestry — to prove
+        --use-branch-tags keeps resolution branch-correct without deleting tags.
+
         The release message is injected via the "manual" retrieval path
-        (CI_PIPELINE_EVarENT=manual + PLUGIN_MESSAGE) by default. For a
+        (CI_PIPELINE_EVENT=manual + PLUGIN_MESSAGE) by default. For a
         pull_request event, urlopen is mocked to hand back `message` as the
         PR description instead, since there's no real Bitbucket server here.
         """
@@ -1567,6 +1572,10 @@ class TestHotfixBranchTagResolution(unittest.TestCase):
             self._git("remote", "add", "origin", self.src_dir, cwd=repo_dir)
             self._git("fetch", "-q", "--no-tags", "origin", "hotfix", cwd=repo_dir)
             self._git("checkout", "-q", "FETCH_HEAD", cwd=repo_dir)
+            if all_tags:
+                # `tags: true`: pull EVERY tag (incl. the non-ancestor v2.0.0)
+                # into the workspace, without touching FETCH_HEAD/HEAD.
+                self._git("fetch", "-q", "origin", "refs/tags/*:refs/tags/*", cwd=repo_dir)
             cliff_toml = os.path.join(os.path.dirname(_src_path), "cliff.toml")
 
             tags_file = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False).name
@@ -1604,6 +1613,11 @@ class TestHotfixBranchTagResolution(unittest.TestCase):
                 else:
                     release()
 
+            # Snapshot tags still present after the run, so tests can assert the
+            # resolution was non-destructive (no `git tag -d`).
+            self._repo_tags_after = sorted(
+                t for t in self._git("tag", "-l", cwd=repo_dir).splitlines() if t
+            )
             with open(tags_file) as f:
                 return [line.strip() for line in f if line.strip()]
         finally:
@@ -1664,6 +1678,50 @@ class TestHotfixBranchTagResolution(unittest.TestCase):
             {"CI_COMMIT_BRANCH": "hotfix"},
         )
         self.assertEqual(tags, ["nati-v1.1.0"])
+
+    def test_5_tags_true_direct_hotfix_still_resolves_ancestor(self):
+        """
+        Checks the `tags: true` scenario: even with nati-v2.0.0 physically
+        present in the workspace, a fix on the hotfix branch still bumps against
+        its own ancestor (nati-v1.0.0 -> nati-v1.0.1) — proving git-cliff's
+        --use-branch-tags scopes to the branch — and NO tags are deleted.
+        """
+        tags = self._clone_and_run(
+            "fix[nati]: patch bug",
+            {"CI_COMMIT_BRANCH": "hotfix"},
+            all_tags=True,
+        )
+        self.assertEqual(tags, ["nati-v1.0.1"])
+        self.assertEqual(self._repo_tags_after, ["nati-v1.0.0", "nati-v2.0.0"])
+
+    def test_6_tags_true_breaking_on_hotfix_crosses_own_major(self):
+        """
+        Checks `tags: true` with a breaking commit: hotfix bumps its OWN line
+        (nati-v1.0.0 -> nati-v2.0.0), not master's (which would give 3.0.0),
+        and no tags are deleted.
+        """
+        tags = self._clone_and_run(
+            "breaking[nati]: major change",
+            {"CI_COMMIT_BRANCH": "hotfix"},
+            all_tags=True,
+        )
+        self.assertEqual(tags, ["nati-v2.0.0"])
+        self.assertEqual(self._repo_tags_after, ["nati-v1.0.0", "nati-v2.0.0"])
+
+    def test_7_tags_true_pr_resolves_against_master(self):
+        """
+        Checks `tags: true` for a pull_request: with all tags present, the PR
+        (checked out on hotfix) still resolves against the TARGET branch master
+        (nati-v2.0.0 -> nati-v2.1.0) via the target-branch checkout, non-
+        destructively.
+        """
+        tags = self._clone_and_run(
+            "feat[nati]: normal feature",
+            {"CI_PIPELINE_EVENT": "pull_request", "CI_COMMIT_TARGET_BRANCH": "master"},
+            all_tags=True,
+        )
+        self.assertEqual(tags, ["nati-v2.1.0"])
+        self.assertEqual(self._repo_tags_after, ["nati-v1.0.0", "nati-v2.0.0"])
 
 
 if __name__ == "__main__":

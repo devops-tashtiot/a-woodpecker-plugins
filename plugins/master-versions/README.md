@@ -251,6 +251,23 @@ The plugin exits with code 1 if the message can't be determined (e.g. a missing 
 
 **`PLUGIN_BITBUCKET_TOKEN` is also used for tag resolution.** Before processing any component, the plugin does an authenticated `git fetch` of the resolved branch so git's tag auto-follow pulls the existing version tags (the CI clone uses `tags: false`, so the workspace starts with none). The plugin's own step image has no Bitbucket credentials of its own, so the token is sent as an `Authorization: Bearer <token>` header via `git -c http.extraHeader=…` (the only scheme Bitbucket DC HTTP tokens accept). Without it the fetch 401s, no tags are visible, and every component is mistakenly treated as a first release (recreating `…-v1.0.0` instead of bumping). Set `PLUGIN_BITBUCKET_TOKEN` on any event where you want correct version bumps, not just `pull_request`.
 
+**Works with the clone's `tags: true` OR `tags: false`.** Version resolution is always scoped to the correct branch, regardless of how many tags the clone brought into the workspace:
+
+- git-cliff's bump is invoked with `--use-branch-tags`, so it only considers tags reachable from the checked-out `HEAD`. With `tags: false` only ancestry tags are present anyway (no-op); with `tags: true` (every tag from every branch present) it still resolves correctly — a `fix` on a hotfix cut from `v1.0.0` bumps to `v1.0.1`, never `v2.0.1` from an unrelated mainline `v2.0.0`. **No tags are ever deleted.**
+- Because `--use-branch-tags` looks at the checked-out branch, a `pull_request` run must resolve against its **target** branch, not the PR's own branch. So for `pull_request` events the plugin temporarily `git checkout`s the target branch (`CI_COMMIT_TARGET_BRANCH`), calculates every version there, then checks back to the PR branch before writing any `CHANGELOG.md` (so the changelog files persist for the push step). Non-PR runs calculate directly on the current branch. This needs a **full clone** (see below).
+
+**Clone must be a full clone (`partial: false`).** Ancestry-based tag resolution needs real commit history. Woodpecker's `plugin-git` does a **partial + shallow** clone by default (`--depth=1 --filter=tree:0`), which silently ignores `depth: 0` and severs ancestry — then `git describe` finds no tag and every component is mis-detected as a first release. Set **`partial: false`** (with `depth: 0`) in the clone step so the workspace has full history:
+
+```yaml
+clone:
+  git:
+    image: <your plugin-git image>
+    settings:
+      depth: 0
+      partial: false   # REQUIRED: without this, plugin-git clones shallow and tag resolution breaks
+      tags: false       # or true — master-versions handles both
+```
+
 ### Optional
 
 | Variable | Default | Description |
