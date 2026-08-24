@@ -41,7 +41,7 @@ In a monorepo, each component has its own independent `CHANGELOG.md` and its own
 4. [PLUGIN_CHANGELOG_LEVEL enforcement](#4-plugin_changelog_level-enforcement)
 5. [Variables](#5-variables)
 6. [Triggering events — manual, pull_request, and push (merge)](#6-triggering-events--manual-pull_request-and-push-merge)
-7. [Tutorial — squash-merge setup, building the pipeline, releasing a hotfix](#7-tutorial--squash-merge-setup-building-the-pipeline-releasing-a-hotfix)
+7. [Tutorial — set up Bitbucket, add the pipeline, release a hotfix](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix)
 8. [Cross-referencing with changed-files](#8-cross-referencing-with-changed-files)
 9. [Examples](#9-examples)
 
@@ -270,41 +270,6 @@ The plugin retrieves its own message — there's no explicit input step. It look
 This section walks through what actually happens on each, end to end, across this repo's two
 pipelines (`.woodpecker/pr.yml` and `.woodpecker/publish.yml`).
 
-### Required Bitbucket setting: squash merge with `DESCRIPTION` injected into the commit
-
-For the `push` event below to see the PR description at all, this repo's Bitbucket merge
-strategy must be configured to carry it into the commit that lands on `main`:
-
-1. In Bitbucket Server/DC → repository **Settings → Pull Requests → Merge strategies**, set the
-   merge strategy to **Squash** (keeps `main` at one commit per PR, matching this pipeline's
-   assumption that `git log -1` on the push *is* the whole merge).
-2. Customize that strategy's **commit message template** to include a `DESCRIPTION` header
-   followed by the PR description variable:
-   ```
-   Merge pull request #${id} from ${fromRefName}
-
-   METADATA
-   Title: ${title}
-   Target: ${toRepoSlug} (${toRefName})
-   Source: ${fromRepoSlug} (${fromRefName})
-
-   DESCRIPTION
-   ${description}
-   ```
-3. Set **max commit summaries to `0`**, so the squashed source-branch commit messages aren't
-   appended below `DESCRIPTION` — otherwise they get parsed too, as extra (likely garbage)
-   commit lines alongside the real PR body.
-
-**If this isn't configured:** `_retrieve_push_message()` still runs, finds no `DESCRIPTION`
-marker, logs a `WARNING`, and falls back to the full merge commit body — which on Bitbucket's
-*default* template is just `Merge pull request #123 from feature-branch`, containing no
-`[location]` lines at all. The pipeline "succeeds" and silently releases nothing on every merge.
-
-The template's first line matters beyond `DESCRIPTION` extraction, too: `publish.yml`'s
-`evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` guard depends on it staying
-`Merge pull request #...` — changing that opening line means updating the `evaluate:` guard as
-well, or `publish.yml` will never fire on a real merge.
-
 ### `manual` — you trigger a run yourself
 
 You open Woodpecker's UI (or CLI) and manually trigger a pipeline, typing the release message
@@ -352,7 +317,8 @@ plain push — so the Bitbucket-API path used by `pull_request` isn't available 
 `_retrieve_push_message()` instead reads the merge commit's own body via
 `git log -1 --pretty=%B` and takes everything after a `DESCRIPTION` marker line. **This only
 works if Bitbucket's merge commit actually contains that marker and the PR description under
-it** — which is not what Bitbucket produces by default. That's the required setting below.
+it** — which is not what Bitbucket produces by default. That's the required setup covered in
+[§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix).
 
 Once the message is retrieved, `publish.yml`'s `Run release (merge)` step computes every
 version, builds and pushes the real images, and the final `Push changelogs to Git` step commits
@@ -582,11 +548,19 @@ The [`changed-files`](../changed-files/) plugin writes the set of directories th
 - **Changed but not declared** — a directory changed on disk but no `[location]` in the PR body covers it
 - **Declared but not changed** — a `[location]` appears in the PR body but no files under it actually changed
 
-Add these steps to `pr.yml`, in place of its plain `Run release` step — `Get changed dirs` runs
-first, `Run release` gains `PLUGIN_OUTPUT_LOCATIONS_FILE`, and `Check scopes vs changes` runs
-after it:
+This is `pr.yml` from [§7B](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix), with
+two steps added: `Get changed dirs` runs first, and `Check scopes vs changes` runs right after
+`Run release` (which gains `PLUGIN_OUTPUT_LOCATIONS_FILE`). Everything else — including whether
+you keep the `Build and push plugin images` step — is unchanged from §7B:
 
 ```yaml
+clone:
+  git:
+    image: woodpeckerci/plugin-git:latest
+
+when:
+  - event: pull_request
+
 steps:
   - name: Get changed dirs
     image: netanelzucaim123/changed-files:latest
@@ -599,11 +573,11 @@ steps:
     image: netanelzucaim123/master-versions:latest
     environment:
       PLUGIN_BASE_PATH: "."
-      PLUGIN_CHANGELOG_LEVEL: "1"
       PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
       PLUGIN_OUTPUT_LOCATIONS_FILE: "release_locations.txt"
       PLUGIN_BITBUCKET_TOKEN:
         from_secret: bitbucket_token
+      PLUGIN_CHANGELOG_LEVEL: "1"   # set to whatever depth(s) your components live at, e.g. "2,3"
 
   - name: Check scopes vs changes
     image: netanelzucaim123/master-versions-vs-changed-files:latest
@@ -612,9 +586,19 @@ steps:
       changed_dirs_file: changed_dirs.txt
       fail_on_mismatch: false
 
+  # Only needed if your components have Dockerfiles you want built and pushed — see §7B.
   - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
-    # ... unchanged from pr.yml in §7B
+    privileged: true
+    environment:
+      PLUGIN_BASE_PATH: "."
+      PLUGIN_TAGS_FILE: "new_tags.txt"
+      PLUGIN_REPO: "myorg"
+    secrets:
+      - source: docker_username
+        target: plugin_username
+      - source: docker_password
+        target: plugin_password
 ```
 
 > Set `fail_on_mismatch: true` to fail the PR build when the description and the actual changed
