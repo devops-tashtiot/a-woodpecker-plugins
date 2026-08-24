@@ -484,6 +484,9 @@ def _retrieve_push_message():
     pull_request_closed, is used to detect a merge).
     """
     result = run_command("git log -1 --pretty=%B")
+    if result.returncode != 0:
+        print(f">>> ERROR: 'git log -1 --pretty=%B' failed ({result.stderr.strip()}) — cannot retrieve the push message.")
+        return None
     message = result.stdout
     marker = "DESCRIPTION"
     if marker in message:
@@ -537,7 +540,7 @@ def release():
     except (TypeError, ValueError):
         print(">>> ERROR: PLUGIN_CHANGELOG_LEVEL must be a non-negative integer, or a "
               "comma-separated list of them (e.g. 1 or 2,3,4).")
-        return
+        sys.exit(1)
 
     pr_body = _retrieve_message()
     if pr_body is None:
@@ -569,7 +572,7 @@ def release():
 
     if not os.path.exists(global_toml):
         print(f">>> ERROR: cliff.toml not found at {global_toml}")
-        return
+        sys.exit(1)
 
     parsers, bump_cfg = load_cliff_parsers(global_toml)
 
@@ -648,7 +651,12 @@ def release():
     # on it. If the workspace is shallow, unshallow the fetch to restore full
     # history. `--unshallow` errors on an already-complete repo, so it is only
     # added when the repo is actually shallow.
-    is_shallow    = run_command("git rev-parse --is-shallow-repository").stdout.strip() == "true"
+    _shallow_check = run_command("git rev-parse --is-shallow-repository")
+    if _shallow_check.returncode != 0:
+        print(f">>> ERROR: 'git rev-parse --is-shallow-repository' failed ({_shallow_check.stderr.strip()}) — "
+              f"cannot determine clone depth, so tag resolution cannot be trusted.")
+        sys.exit(1)
+    is_shallow    = _shallow_check.stdout.strip() == "true"
     unshallow_opt = "--unshallow " if is_shallow else ""
     if is_shallow:
         print(">>> [INFO] Shallow clone detected — unshallowing to restore full history for "
@@ -661,15 +669,26 @@ def release():
             resolved_ref = f"refs/remotes/origin/{resolve_branch}"
             print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")
         else:
-            print(f">>> WARNING: could not fetch branch '{resolve_branch}' ({fetch_result.stderr.strip()}) — falling back to HEAD")
+            # Falling back to HEAD here would silently resolve tags against
+            # whatever happens to be checked out instead of the branch that
+            # actually governs this run (see HOTFIX_TAG_RESOLUTION.md) — that
+            # can compute a version bump from the wrong base entirely. Fail
+            # loudly instead of guessing.
+            print(f">>> ERROR: could not fetch branch '{resolve_branch}' ({fetch_result.stderr.strip()}) — "
+                  f"refusing to fall back to a possibly-wrong ref for tag resolution.")
+            sys.exit(1)
     elif is_shallow:
         # No branch to resolve against (e.g. a bare local run), but shallow —
         # deepen the current checkout so describe still has ancestry.
-        run_command(f"git {auth_opt}fetch --unshallow origin")
+        unshallow_result = run_command(f"git {auth_opt}fetch --unshallow origin")
+        if unshallow_result.returncode != 0:
+            print(f">>> ERROR: could not unshallow the clone ({unshallow_result.stderr.strip()}) — "
+                  f"tag resolution on a shallow clone would misdetect components as first releases.")
+            sys.exit(1)
         # git prints fetched ref/tag updates (e.g. "* [new tag] ...") to stderr.
-        if fetch_result.stderr.strip():
+        if unshallow_result.stderr.strip():
             print(">>> [DIAG] fetch stderr (ref/tag updates):")
-            for _l in fetch_result.stderr.strip().splitlines():
+            for _l in unshallow_result.stderr.strip().splitlines():
                 print(f"    {_l}")
 
     # ── Diagnostics: the exact workspace state that decides tag resolution ─────
@@ -693,15 +712,23 @@ def release():
     # for the later "Push changelogs to Git" step.
     orig_head = None
     if is_pr and resolve_branch and resolved_ref != "HEAD":
-        orig_head = run_command("git rev-parse HEAD").stdout.strip() or None
+        head_result = run_command("git rev-parse HEAD")
+        if head_result.returncode != 0:
+            print(f">>> ERROR: 'git rev-parse HEAD' failed ({head_result.stderr.strip()}) — "
+                  f"cannot safely switch to the target branch without a way back.")
+            sys.exit(1)
+        orig_head = head_result.stdout.strip() or None
         checkout = run_command(f"git checkout --detach {resolved_ref}")
         if checkout.returncode == 0:
             print(f">>> [INFO] PR build: checked out target branch '{resolve_branch}' "
                   f"to calculate versions against it (will restore afterward)")
         else:
-            print(f">>> WARNING: could not check out target '{resolve_branch}' "
-                  f"({checkout.stderr.strip()}) — calculating against the PR branch instead")
-            orig_head = None
+            # Falling back to the PR's own branch here would compute every
+            # version against the WRONG base (see HOTFIX_TAG_RESOLUTION.md) —
+            # fail loudly instead of silently releasing a wrong version.
+            print(f">>> ERROR: could not check out target branch '{resolve_branch}' "
+                  f"({checkout.stderr.strip()}) — refusing to compute versions against the wrong branch.")
+            sys.exit(1)
 
     release_plan = []
     for location in sorted(location_to_commits):
@@ -727,8 +754,14 @@ def release():
         print("")
         print(f"\033[1;31m--- Processing: {display_name} ---\033[0m")
         print("")
-        # Skip non-existent directories (root is always assumed to exist)
-        if not is_root and not os.path.isdir(full_path):
+        # Skip components whose directory doesn't exist — but only when the
+        # working tree IS the branch being released (root is always assumed to
+        # exist). For a pull_request we've temporarily checked out the TARGET
+        # branch, on which a brand-new component added by the PR legitimately
+        # doesn't exist yet. In that case don't skip: let it fall through to a
+        # first release (the default PLUGIN_INITIAL_TAG), and PHASE B writes its
+        # CHANGELOG on the restored PR branch where the directory does exist.
+        if not is_root and not orig_head and not os.path.isdir(full_path):
             print(f">>> SKIP: Directory '{location}' does not exist.")
             continue
 
@@ -802,6 +835,13 @@ def release():
                 for line in bumped.stderr.strip().splitlines():
                     print(f"    {line}")
 
+            if bumped.returncode != 0:
+                # A real git-cliff failure (bad cliff.toml, corrupted history, ...)
+                # must not be silently treated the same as "nothing to release" —
+                # that would mask a broken run as a normal no-op.
+                print(f">>> ERROR: git-cliff bump failed for {display_name} (exit {bumped.returncode}) — see stderr above.")
+                sys.exit(1)
+
             new_tag = bumped.stdout.strip()
             if not new_tag:
                 print(f">>> SKIP: no releasable commits for {display_name}")
@@ -833,11 +873,17 @@ def release():
 
     # Restore the original checkout before writing any files (only moved for PRs).
     if orig_head:
-        run_command(f"git checkout --detach {orig_head}")
+        restore = run_command(f"git checkout --detach {orig_head}")
+        if restore.returncode != 0:
+            print(f">>> ERROR: could not restore original checkout ({orig_head[:12]}) after version "
+                  f"calculation ({restore.stderr.strip()}) — refusing to write CHANGELOG.md files "
+                  f"against the wrong checked-out tree.")
+            sys.exit(1)
         print(f">>> [INFO] Restored original checkout ({orig_head[:12]}) after version calculation")
 
     # ── PHASE B: write each component's CHANGELOG on the working branch ────────
     created_tags = []
+    had_changelog_errors = False
     for item in release_plan:
         display_name          = item["display_name"]
         new_tag               = item["new_tag"]
@@ -876,6 +922,7 @@ def release():
 
         if res.returncode != 0:
             print(f">>> ERROR generating changelog for {display_name}: {res.stderr.strip()}")
+            had_changelog_errors = True
             continue
 
         created_tags.append(new_tag)
@@ -893,6 +940,10 @@ def release():
             print(f"\033[1;34m    {tag}\033[0m")
     else:
         print("\033[1;34m>>> No new tags created.\033[0m")
+
+    if had_changelog_errors:
+        print(">>> ERROR: one or more components failed to generate a CHANGELOG.md — see errors above. Failing the run.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

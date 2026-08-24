@@ -10,6 +10,7 @@ Technical reference for how `master-versions` works under the hood.
 2. [Stateless mode — how this plugin uses git-cliff](#2-stateless-mode--how-this-plugin-uses-git-cliff)
 3. [cliff.toml explained](#3-clifftoml-explained)
 4. [How git-cliff is called internally](#4-how-git-cliff-is-called-internally)
+5. [Clone settings don't matter — how shallow/partial clones are handled](#5-clone-settings-dont-matter--how-shallowpartial-clones-are-handled)
 
 ---
 
@@ -166,3 +167,34 @@ The full multiline commit string is passed here — the body content is needed f
 3. git cliff --tag 'nati-1.1.0' ...   → write CHANGELOG.md (full commit body)
 4. append 'nati-1.1.0' to output tags file
 ```
+
+---
+
+## 5. Clone settings don't matter — how shallow/partial clones are handled
+
+Version resolution (`git describe`, and git-cliff's own tag lookup) needs real commit ancestry.
+`plugin-git`'s `partial: true` default runs `git fetch --depth=1 --filter=tree:0`, which cuts
+history at a shallow boundary — on such a clone `git describe` fails with `fatal: No names found,
+cannot describe anything`, because the shallow boundary makes the checked-out commit look like it
+has no parents.
+
+`release.py` handles this itself before any tag resolution happens: it checks
+`git rev-parse --is-shallow-repository`, and if the workspace is shallow, folds `--unshallow`
+into the same fetch that establishes the resolved branch:
+
+```python
+fetch_result = run_command(
+    f"git {auth_opt}fetch {unshallow_opt}origin {resolve_branch}:refs/remotes/origin/{resolve_branch}"
+)
+```
+
+Verified directly, not assumed: reproduced a real `--depth=1 --filter=tree:0` clone against a git
+server with `uploadpack.allowFilter=true` (so the filter was genuinely honored — confirmed via
+`remote.origin.partialclonefilter` and a near-empty initial pack, not silently ignored the way a
+local `file://` remote does by default), then ran the exact fetch above. Result: `is_shallow`
+flipped to `false`, every commit became reachable again, tags auto-followed, and `git describe`
+resolved correctly. The `tree:0` filter itself turned out to be irrelevant to the outcome — `git
+describe` only needs commit and tag objects, never tree/blob content.
+
+This is why the clone step's `partial`/`depth`/`tags` settings are non-load-bearing: whatever
+state the clone leaves the workspace in, `release.py` repairs it before computing any version.
