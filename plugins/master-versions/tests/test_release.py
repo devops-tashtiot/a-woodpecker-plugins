@@ -823,6 +823,7 @@ class TestRetrieveMessage(unittest.TestCase):
 
     def test_6_push_message_extracts_description_section(self):
         mock_result = MagicMock()
+        mock_result.returncode = 0
         mock_result.stdout = (
             "Merge pull request #12 from feature-branch\n\n"
             "METADATA\n"
@@ -836,10 +837,27 @@ class TestRetrieveMessage(unittest.TestCase):
 
     def test_7_push_message_no_description_marker_uses_full_message(self):
         mock_result = MagicMock()
+        mock_result.returncode = 0
         mock_result.stdout = "Direct push, not a merge commit\n"
         with patch.object(release_module, "run_command", return_value=mock_result):
             result = _retrieve_push_message()
         self.assertEqual(result, "Direct push, not a merge commit")
+
+    def test_7a_push_message_git_log_failure_returns_none(self):
+        """
+        Checks: if 'git log -1 --pretty=%B' itself fails (e.g. corrupted repo,
+        not a git checkout at all), _retrieve_push_message() returns None
+        instead of silently treating the empty/garbage stdout as "no
+        DESCRIPTION marker, use the full message as-is" — that would mask a
+        real git failure as an empty-but-valid message.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "fatal: not a git repository"
+        with patch.object(release_module, "run_command", return_value=mock_result):
+            result = _retrieve_push_message()
+        self.assertIsNone(result)
 
     def test_8_dispatch_pull_request_event(self):
         with patch.dict(os.environ, {"CI_PIPELINE_EVENT": "pull_request"}, clear=False), \
@@ -974,28 +992,88 @@ class TestRelease(unittest.TestCase):
         mock_cmd = self._run("just some prose, no commits here", dirs_exist=[])
         mock_cmd.assert_not_called()
 
-    def test_4_cliff_failure_does_not_crash(self):
+    def test_4_cliff_changelog_failure_exits_with_error(self):
         """
-        Checks: if git-cliff returns a non-zero exit code for the changelog step,
-                release() prints an error message but does NOT raise an exception
-                (it continues to the next component or exits gracefully).
+        Checks: if git-cliff's CHANGELOG-writing call (the --output/--prepend
+                step in Phase B) returns a non-zero exit code, release() prints
+                an error message and now (unlike the old "silently continue"
+                behavior) fails the whole run with SystemExit(1) — a dropped
+                CHANGELOG.md must not be reported as a successful run.
+
+        Every OTHER run_command call (tag lookups, shallow-check, fetch, the
+        --bump call) succeeds — only the final changelog-write call fails —
+        so this isolates exactly the Phase B failure path, not an earlier one.
 
         Example:
           PLUGIN_MESSAGE = "feat[nati]: add login"
-          git cliff changelog returncode = 1, stderr = "some error"
-          release() prints ">>> ERROR generating changelog..." and continues.
-          No exception is raised.
+          git cliff changelog (--output/--prepend) returncode = 1
+          release() prints ">>> ERROR generating changelog..." then exits(1).
         """
-        try:
-            self._run(
-                "feat[nati]: add login",
-                dirs_exist=["nati"],
-                cliff_stdout="nati-1.1.0",
-                cliff_returncode=1,
-                cliff_stderr="fatal: not a git repo",
-            )
-        except Exception as e:
-            self.fail(f"release() raised an exception on cliff failure: {e}")
+        def fake_run_command(cmd):
+            result = MagicMock()
+            if "--output" in cmd or "--prepend" in cmd:
+                result.returncode = 1
+                result.stdout = ""
+                result.stderr = "fatal: not a git repo"
+            else:
+                result.returncode = 0
+                result.stdout = ""   # no existing tag -> first-release path, no --bump call needed
+                result.stderr = ""
+            return result
+
+        env = {
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "CI_PIPELINE_EVENT":          "manual",
+            "PLUGIN_BASE_PATH":                "/repo",
+            "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
+            "PLUGIN_OUTPUT_TAGS_FILE":    "",
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     "1",
+        }
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.path.isdir", side_effect=lambda p: p.endswith("nati")), \
+             patch("os.listdir", return_value=[]), \
+             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
+             patch("builtins.open", mock_open()), \
+             patch.object(release_module, "run_command", side_effect=fake_run_command):
+            with self.assertRaises(SystemExit) as cm:
+                release()
+            self.assertEqual(cm.exception.code, 1)
+
+    def test_4a_early_git_failure_exits_with_error(self):
+        """
+        Checks: if a git command that gates correctness fails BEFORE any
+                component is processed (e.g. 'git rev-parse
+                --is-shallow-repository', used to decide whether the clone
+                needs unshallowing), release() fails fast with SystemExit(1)
+                instead of silently guessing (e.g. treating a failed check as
+                "not shallow") and possibly computing a wrong version.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "fatal: not a git repository"
+
+        env = {
+            "PLUGIN_MESSAGE":             "feat[nati]: add login",
+            "CI_PIPELINE_EVENT":          "manual",
+            "PLUGIN_BASE_PATH":                "/repo",
+            "PLUGIN_SCOPE_EXCLUDE_REGEX": "",
+            "PLUGIN_OUTPUT_TAGS_FILE":    "",
+            "PLUGIN_VERBOSE":             "0",
+            "PLUGIN_CHANGELOG_LEVEL":     "1",
+        }
+        with patch.dict(os.environ, env, clear=False), \
+             patch("os.path.exists", return_value=True), \
+             patch("os.path.isdir", return_value=True), \
+             patch("os.listdir", return_value=[]), \
+             patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
+             patch("builtins.open", mock_open()), \
+             patch.object(release_module, "run_command", return_value=mock_result):
+            with self.assertRaises(SystemExit) as cm:
+                release()
+            self.assertEqual(cm.exception.code, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -1257,13 +1335,13 @@ class TestChangelogLevel(unittest.TestCase):
         """
         Checks: when PLUGIN_CHANGELOG_LEVEL is set to a non-integer string,
                 int() raises ValueError, which is caught, an error is printed,
-                and release() returns before calling run_command.
+                and release() exits(1) before calling run_command.
 
         Why this matters: a typo like PLUGIN_CHANGELOG_LEVEL=one or a copy-paste
-        mistake should fail loudly rather than crashing with an unhandled exception
-        deep inside the loop.
+        mistake should fail loudly rather than silently continuing or crashing
+        with an unhandled exception deep inside the loop.
 
-        Expected: run_command never called.
+        Expected: run_command never called; process exits with code 1.
         """
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -1281,7 +1359,9 @@ class TestChangelogLevel(unittest.TestCase):
              patch("os.path.exists", return_value=True), \
              patch("os.path.isdir", return_value=True), \
              patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
-            release()
+            with self.assertRaises(SystemExit) as cm:
+                release()
+            self.assertEqual(cm.exception.code, 1)
 
         mock_cmd.assert_not_called()
 
