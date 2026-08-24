@@ -125,32 +125,59 @@ The `get_env(name="CI_REPO_URL", default="")` call in the default template links
 
 ## 4. How git-cliff is called internally
 
-The plugin calls git-cliff **twice** per component.
+Per component, `release.py` runs one `git describe` (not git-cliff) to find the current version,
+then calls git-cliff **twice**.
 
-### Call 1 — bump calculation (subject line only)
+### STEP 1 — find the current version (`git describe`, not `git tag -l`)
+
+```bash
+git describe --tags --abbrev=0 --match '^nati-[0-9]+\.[0-9]+\.[0-9]+$' <resolved_ref>
+```
+
+Not `git tag -l --sort=-version:refname`, which was tried and rejected — it picks the globally
+highest matching tag with zero regard for ancestry, so a hotfix branch cut from `nati-v1.0.0`
+would resolve against a mainline `nati-v2.0.0` it shares no history with. `git describe` walks
+ancestry from `<resolved_ref>` instead, so it only ever finds a tag actually reachable from that
+branch. Full rationale and worked examples: `HOTFIX_TAG_RESOLUTION.md`.
+
+### STEP 2 — bump calculation (subject line only)
 
 ```bash
 git cliff \
   --config cliff.toml \
   --tag-pattern '^nati-[0-9]+\.[0-9]+\.[0-9]+$' \
+  --use-branch-tags \
   --bump --bumped-version \
   --with-commit 'feat: add login' \
   -- HEAD..HEAD
 ```
 
-Output: the next version string, e.g. `nati-1.1.0`.
+Output: the next version string, e.g. `nati-1.1.0`. `--use-branch-tags` restricts git-cliff's own
+internal tag lookup to tags reachable from the checked-out `HEAD` — matters when the clone
+brought in every tag (`tags: true`); a no-op when it didn't (`tags: false`). `--tag-pattern` stays
+the component's **full, unrestricted** glob here (never narrowed to the current version line) —
+git-cliff validates the computed next version against this same pattern, so narrowing it would
+reject a legitimate breaking bump crossing e.g. `1.0.0` → `2.0.0`.
 
-**Why only the subject line?**
-With `conventional_commits = false`, git-cliff applies `custom_major_increment_regex` and bump rules against the commit subject. When a commit has a body attached without a blank-line separator, git-cliff fails to isolate the subject and falls back to a patch bump regardless of what the regex matched. Passing only the first line of each commit (the subject) avoids this — the subject alone is sufficient to determine the bump level.
+**Why only the subject line?** Passed via `_bump_subject()`, not the raw commit string. With
+`conventional_commits = false`, git-cliff applies `custom_major_increment_regex`/bump rules
+against the subject text. A **bare** subject — `feat:` with the real description on the next
+line, no text after the colon — gives git-cliff nothing to match, and it silently falls back to a
+patch bump regardless of type. `_bump_subject()` only intervenes in that specific case: if the
+subject matches `:\s*$` (nothing after the colon), it folds in the first non-blank continuation
+line (`feat: <that line>`); a subject that already has real text after the colon is passed through
+unchanged.
 
-If the output equals the current latest tag, the component is skipped — no releasable commit.
+If the bump command's output equals the current latest tag (or `git-cliff` finds nothing
+releasable), the component is skipped. A non-zero exit from this call is a hard failure — see §7.
 
-### Call 2 — changelog generation (full multiline string)
+### STEP 3 — changelog generation (full multiline string)
 
 ```bash
 git cliff \
   --config cliff.toml \
   --tag-pattern '^nati-[0-9]+\.[0-9]+\.[0-9]+$' \
+  --use-branch-tags \
   --tag 'nati-1.1.0' \
   --with-commit 'feat: add login
   Full description here.
@@ -159,15 +186,18 @@ git cliff \
   -- HEAD..HEAD
 ```
 
-The full multiline commit string is passed here — the body content is needed for the rendered changelog entry. `--prepend` is used if `CHANGELOG.md` already exists; `--output` is used for the first release.
+The full multiline commit string is passed here (not `_bump_subject()`'s trimmed version) — the
+body content is needed for the rendered changelog entry. `--prepend` is used if `CHANGELOG.md`
+already exists; `--output` is used for the first release. Same `--tag-pattern`/`--use-branch-tags`
+as STEP 2, for the same reasons.
 
 ### Per-component flow summary
 
 ```
-1. git tag -l 'nati-[0-9]*'           → find latest tag (base version)
-2. git cliff --bump --bumped-version   → calculate new version (subject only)
-3. git cliff --tag 'nati-1.1.0' ...   → write CHANGELOG.md (full commit body)
-4. append 'nati-1.1.0' to output tags file
+1. git describe --match '<glob>' <resolved_ref>        → find latest tag (base version), or none → first release
+2. git cliff --use-branch-tags --bump --bumped-version  → calculate new version (subject only)
+3. git cliff --use-branch-tags --tag '<new_tag>' ...    → write CHANGELOG.md (full commit body)
+4. append '<new_tag>' to output tags file
 ```
 
 ---
