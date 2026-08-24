@@ -366,7 +366,7 @@ steps:
     settings:
       base_path: .
       tags_file: new_tags.txt
-      registry: artifactory.example.com
+      registry: harbor.devopstashtiot.page
       repo: myorg
       username: admin
       password:
@@ -417,7 +417,7 @@ steps:
     settings:
       base_path: .
       tags_file: new_tags.txt
-      registry: artifactory.example.com
+      registry: harbor.devopstashtiot.page
       repo: myorg
       username: admin
       password:
@@ -543,7 +543,7 @@ steps:
     settings:
       base_path: .
       tags_file: new_tags.txt
-      registry: artifactory.example.com
+      registry: harbor.devopstashtiot.page
       repo: myorg
       username: admin
       password:
