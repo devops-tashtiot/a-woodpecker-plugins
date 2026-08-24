@@ -43,9 +43,7 @@ In a monorepo, each component has its own independent `CHANGELOG.md` and its own
 6. [Triggering events — manual, pull_request, and push (merge)](#6-triggering-events--manual-pull_request-and-push-merge)
 7. [Tutorial — squash-merge setup, building the pipeline, releasing a hotfix](#7-tutorial--squash-merge-setup-building-the-pipeline-releasing-a-hotfix)
 8. [Cross-referencing with changed-files](#8-cross-referencing-with-changed-files)
-9. [Pipeline — standalone](#9-pipeline--standalone)
-10. [Pipeline — with buildah-master-versions (optional)](#10-pipeline--with-buildah-master-versions-optional)
-11. [Examples](#11-examples)
+9. [Examples](#9-examples)
 
 
 ---
@@ -413,7 +411,14 @@ the pipeline after a PR is merged.
 | Secret | Value |
 |---|---|
 | `bitbucket_token` | A Bitbucket HTTP access token with read access to this repo |
-| `docker_username` / `docker_password` | Credentials for the registry you push built images to |
+| `docker_username` / `docker_password` | Only needed if you're adding the `buildah-master-versions` step below — credentials for the registry you push built images to |
+
+**When to include the `Build and push plugin images` step (`buildah-master-versions`):** only if
+your components have their own `Dockerfile` and you actually want an image built and pushed for
+every tag `master-versions` creates. It reads `PLUGIN_OUTPUT_TAGS_FILE` (`new_tags.txt`) and
+resolves each tag to `PLUGIN_BASE_PATH/<location>/Dockerfile`. If you only need versioning and
+changelogs — no image builds — drop this step (and the `docker_username`/`docker_password`
+secrets) from both pipelines below; everything else still works unchanged.
 
 **Create `.woodpecker/pr.yml`** — runs on every PR, computes candidate versions and builds
 images, never touches git:
@@ -436,6 +441,7 @@ steps:
         from_secret: bitbucket_token
       PLUGIN_CHANGELOG_LEVEL: "1"   # set to whatever depth(s) your components live at, e.g. "2,3"
 
+  # Only needed if your components have Dockerfiles you want built and pushed — see §7B above.
   - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
     privileged: true
@@ -487,6 +493,7 @@ steps:
         from_secret: bitbucket_token
       PLUGIN_CHANGELOG_LEVEL: "1"
 
+  # Only needed if your components have Dockerfiles you want built and pushed — see §7B above.
   - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
     privileged: true
@@ -562,6 +569,12 @@ The goal is `nati-v1.0.1`, not `nati-v2.0.1`.
 
 ## 8. Cross-referencing with changed-files
 
+**Use this when you want to verify that a PR's `[location]` declarations actually match the files
+it changed** — catching a PR whose description says `feat[nati]: ...` but never touched `nati/`,
+or one that touched `plugins/docker/` without declaring it anywhere. This compares what the PR
+*claims* against what actually changed on disk, so it's PR-time validation — it's an addition to
+`pr.yml` (§7B), not something `publish.yml` needs.
+
 `PLUGIN_OUTPUT_LOCATIONS_FILE` writes every accepted location as a sorted, newline-separated list. Because it captures all qualifying locations — including those whose commit type is `skip=true` in `cliff.toml` (e.g. `other`, `code_description`) — it acts as a full scope manifest of everything the PR author claimed to touch, regardless of whether a release was produced.
 
 The [`changed-files`](../changed-files/) plugin writes the set of directories that actually changed in the push. The [`master-versions-vs-changed-files`](../master-versions-vs-changed-files/) plugin then compares the two and reports mismatches:
@@ -569,7 +582,9 @@ The [`changed-files`](../changed-files/) plugin writes the set of directories th
 - **Changed but not declared** — a directory changed on disk but no `[location]` in the PR body covers it
 - **Declared but not changed** — a `[location]` appears in the PR body but no files under it actually changed
 
-> No "fetch PR body" step is needed — `master-versions` retrieves its own message (see [§6 Triggering events](#6-triggering-events--manual-pull_request-and-push-merge)), so it only needs the usual `PLUGIN_BITBUCKET_TOKEN`/`PLUGIN_MESSAGE` depending on the triggering event.
+Add these steps to `pr.yml`, in place of its plain `Run release` step — `Get changed dirs` runs
+first, `Run release` gains `PLUGIN_OUTPUT_LOCATIONS_FILE`, and `Check scopes vs changes` runs
+after it:
 
 ```yaml
 steps:
@@ -596,105 +611,20 @@ steps:
       master_versions_locations_file: release_locations.txt
       changed_dirs_file: changed_dirs.txt
       fail_on_mismatch: false
-```
 
-> Set `fail_on_mismatch: true` to fail the pipeline when the PR description and the actual changed directories do not match exactly.
-
----
-
-## 9. Pipeline — standalone
-
-Use `master-versions` on its own when you only need versioning and changelogs — no Docker image builds involved.
-
-> No "fetch PR body" step is needed — `master-versions` retrieves its own message (see [§6 Triggering events](#6-triggering-events--manual-pull_request-and-push-merge)): the Bitbucket API for `pull_request` events, `PLUGIN_MESSAGE` for `manual` runs, or the merge commit for a `push`. Clone settings don't matter — see [§5](#5-variables).
-
-```yaml
-steps:
-  - name: Run release
-    image: netanelzucaim123/master-versions:latest
-    environment:
-      PLUGIN_BASE_PATH: "."
-      PLUGIN_CHANGELOG_LEVEL: "1"
-      PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
-      PLUGIN_BITBUCKET_TOKEN:
-        from_secret: bitbucket_token
-
-  - name: Push changelogs and tags
-    image: alpine/git
-    commands:
-      - git config user.email "ci@example.com"
-      - git config user.name "CI"
-      - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
-      - |
-        if ! git diff --cached --quiet; then
-          git commit -m "chore: update changelogs [skip ci]"
-          git push --force-with-lease origin "HEAD:$${CI_COMMIT_BRANCH}"
-        fi
-        for tag in $(cat new_tags.txt); do git tag -f "$tag"; done
-        git push --force --tags origin
-```
-
-> `--force-with-lease` on the branch push (not plain `--force`): it only overwrites if the remote branch still matches what this workspace last saw, so a concurrent push to the same branch is rejected instead of silently discarded. `$${CI_COMMIT_BRANCH}` uses Woodpecker's `$$` escape so the literal `${CI_COMMIT_BRANCH}` reaches the shell instead of being substituted away by Woodpecker first — see the root `CLAUDE.md`'s Bitbucket push-access gotcha for the same escaping rule.
-
----
-
-## 10. Pipeline — with buildah-master-versions (optional)
-
-> **Only add this step if your repository contains Dockerfiles you want to build and push.**
-> If you only do versioning and changelogs, the previous section is all you need.
-
-When each component has a `Dockerfile`, `buildah-master-versions` reads the tags file produced by `master-versions` and builds + pushes the corresponding Docker image for each tag.
-
-```
-master-versions                         buildah-master-versions
-──────────────────────────────          ──────────────────────────────────────────
-parse retrieved message                 reads new_tags.txt line by line
-  → nati-1.1.0                     ──►  nati-1.1.0       → PLUGIN_BASE_PATH/nati/Dockerfile
-  → plugins-docker-2.0.0           ──►  plugins-docker-2.0.0 → PLUGIN_BASE_PATH/plugins/docker/Dockerfile
-appended to new_tags.txt                builds and pushes each image via buildah
-```
-
-```yaml
-steps:
-  - name: Run release
-    image: netanelzucaim123/master-versions:latest
-    environment:
-      PLUGIN_BASE_PATH: "."
-      PLUGIN_CHANGELOG_LEVEL: "1"
-      PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
-      PLUGIN_BITBUCKET_TOKEN:
-        from_secret: bitbucket_token
-
-  - name: Push changelogs and tags
-    image: alpine/git
-    commands:
-      - git config user.email "ci@example.com"
-      - git config user.name "CI"
-      - find . -name "CHANGELOG.md" -not -path "./.git/*" | xargs -r git add
-      - |
-        if ! git diff --cached --quiet; then
-          git commit -m "chore: update changelogs [skip ci]"
-          git push --force-with-lease origin "HEAD:$${CI_COMMIT_BRANCH}"
-        fi
-        for tag in $(cat new_tags.txt); do git tag -f "$tag"; done
-        git push --force --tags origin
-
-  - name: Build and push images
+  - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
-    settings:
-      base_path: .
-      tags_file: new_tags.txt
-      repo: myorg
-    secrets:
-      - source: docker_username
-        target: plugin_username
-      - source: docker_password
-        target: plugin_password
+    # ... unchanged from pr.yml in §7B
 ```
+
+> Set `fail_on_mismatch: true` to fail the PR build when the description and the actual changed
+> directories don't match exactly, instead of just reporting the mismatch. `publish.yml` is
+> unaffected by any of this — its `Push changelogs to Git` step still runs exactly as shown in
+> §7B.
 
 ---
 
-## 11. Examples
+## 9. Examples
 
 ### Single component — minor bump
 
