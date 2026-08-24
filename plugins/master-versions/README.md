@@ -325,6 +325,21 @@ version, builds and pushes the real images, and the final `Push changelogs to Gi
 `CHANGELOG.md` files and creates the release tags — the only point in either pipeline where
 anything is actually persisted back to git.
 
+**A push whose commit message doesn't match `evaluate:` leaves no trace anywhere, not even in
+Woodpecker.** `evaluate:` sits on `publish.yml`'s pipeline-level `when:` (not a step's), so
+Woodpecker itself decides whether to run the pipeline at all, before any step — including
+`release.py` — ever executes. Verified directly against Woodpecker's own server source
+(`server/pipeline/create.go`): when every workflow in a YAML file gets filtered out by `when:`,
+Woodpecker creates a pipeline record for the incoming webhook, finds zero matching workflows,
+**deletes the record it just created**, and returns `ErrFiltered`
+(`"ignoring hook: 'when' filters filtered out all steps"`) — logged at `Debug` level on the
+Woodpecker **server's** own log, not anywhere exposed per-repo. So a direct push to `main` that
+isn't a PR merge produces no run in Woodpecker's UI/activity list at all, not even a "skipped"
+entry — there's nothing to check from the CI side if a push mysteriously "did nothing." (Compare
+this with a missing `PLUGIN_MESSAGE` on a `manual` run, which *is* fully diagnosable — `manual` is
+always a matching event, so the pipeline runs and `_retrieve_manual_message()` prints a clear
+`>>> ERROR: PLUGIN_MESSAGE is empty` before `release.py` exits.)
+
 ---
 
 ## 7. Tutorial — set up Bitbucket, add the pipeline, release a hotfix
