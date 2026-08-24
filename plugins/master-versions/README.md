@@ -26,10 +26,11 @@ In a monorepo, each component has its own independent `CHANGELOG.md` and its own
 
 > ### ⚠️ Required one-time Bitbucket setup
 > A real release only happens on a `push` to `main` after a PR merge — and that step reads the
-> PR description out of the **merge commit itself**. This only works if the repository's PR merge
-> strategy is set to **Squash**, with a custom commit message template that injects the PR
-> description under a `DESCRIPTION` marker. Without this, every merge "succeeds" but silently
-> releases nothing. Full steps and the exact template: [§6](#6-triggering-events--manual-pull_request-and-push-merge).
+> PR description out of the **merge commit itself**. This requires a custom commit message
+> template that injects the PR description under a `DESCRIPTION` marker, with **commit summaries
+> disabled** so nothing gets appended after it — not tied to any particular merge strategy.
+> Without this, every merge "succeeds" but silently releases nothing. Full steps and the exact
+> template: [§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix).
 
 ---
 
@@ -272,7 +273,7 @@ The plugin retrieves its own message — there's no explicit input step. It look
 |---|---|
 | `manual` | You type the release message directly into Woodpecker's trigger dialog. For a hotfix branch or any release without a PR to source from. |
 | `pull_request` | Fetches the PR's live description from Bitbucket. Computes candidate versions and builds images only — never pushes a changelog or creates a tag. |
-| `push` to `main` (a PR merge) | Gated by `branch: main` **and** `evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` — a direct push to `main` that isn't a PR merge never matches this and never triggers the pipeline at all, not even as a "skipped" run. The only event that persists anything: reads `git log -1 --pretty=%B` and takes everything after the first `DESCRIPTION` marker it finds — which only a real squash merge produces, via the template from §7A. If no `DESCRIPTION` marker is found, it falls back to using the full commit message as-is. Requires the Bitbucket setup in [§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix). |
+| `push` to `main` (a PR merge) | Gated by `branch: main` **and** `evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` — a direct push to `main` that isn't a PR merge never matches this and never triggers the pipeline at all, not even as a "skipped" run. The only event that persists anything: reads `git log -1 --pretty=%B` and takes everything after the first `DESCRIPTION` marker it finds — which only a real PR merge produces, via the commit message template from §7A. If no `DESCRIPTION` marker is found, it falls back to using the full commit message as-is. Requires the Bitbucket setup in [§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix). |
 
 Full mechanics for each — exact functions, why `pull_request` never persists, the full
 `DESCRIPTION` extraction walkthrough — are in `DETAILEDREADME.md` §6.
@@ -291,19 +292,12 @@ You need **repository admin** rights. This is what makes the release description
 the pipeline after a PR is merged.
 
 1. Repo → **Repository settings** (gear icon) → **Pull Requests**.
-2. Under **Merge strategies**, set **Squash** as the default. The `DESCRIPTION` template in step
-   3 only ever applies to a Squash merge — whoever merges a PR still picks the strategy for that
-   merge, and Bitbucket lets you leave other strategies enabled if you want that flexibility. But
-   picking anything other than Squash for a given merge silently skips the release: a `no-ff`
-   merge commit still matches `publish.yml`'s `evaluate: CI_COMMIT_MESSAGE contains "Merge pull
-   request"` guard and the pipeline still runs — it just merges with **no `DESCRIPTION` section**,
-   so the release step finds nothing to release and that merge quietly ships nothing. **Disabling
-   every other strategy, so Squash is the only option, is the recommended way to avoid this** —
-   nobody merging a PR can forget and pick the wrong one. If you do restrict it, order matters:
-   Bitbucket won't let you disable whichever strategy is currently the default, so set Squash as
-   default *first* — only then does e.g. **Merge commit** become disableable.
-3. On the Squash strategy, turn on the custom commit message option and paste this template
-   exactly:
+2. Under **Merge strategies**, pick whichever strategies you want available — this isn't tied to
+   Squash specifically. `commitMessageTemplate` (step 3) is a single, repo-wide setting in
+   Bitbucket's merge config with no per-strategy variant, so it applies no matter which strategy
+   the merger picks. Restricting to Squash-only is still worth doing to keep `main` at one commit
+   per PR, but it's not required for the template or the `DESCRIPTION` extraction to work.
+3. Turn on the custom commit message option and paste this template exactly:
    ```
    Merge pull request #${id} from ${fromRefName}
 
@@ -315,12 +309,18 @@ the pipeline after a PR is merged.
    DESCRIPTION
    ${description}
    ```
-4. Under **Commit summaries**, set the maximum to `0`.
-5. Save, then verify: open a throwaway PR with a body like `feat[nati]: verify squash template`,
-   merge it, and on `main` run `git log -1 --pretty=%B`. You should see the template above with
-   your PR body under `DESCRIPTION`. If you only see `Merge pull request #123 in PROJECT/repo
-   from feature-branch to main` with nothing else, the merge used a non-Squash strategy — go back
-   to step 2, not step 3; the template itself only ever applies to a Squash merge.
+4. Under **Commit summaries**, set the maximum to `0`. **This is the setting that actually
+   matters, regardless of strategy.** `_retrieve_push_message()` takes everything after the
+   `DESCRIPTION` marker to the end of the commit message, verbatim — if commit summaries aren't
+   disabled, Bitbucket appends the individual source-branch commits' summary lines after
+   `${description}`, and those land inside what gets parsed as the PR description, right along
+   with the real content.
+5. Save, then verify: open a throwaway PR with a body like `feat[nati]: verify template`, merge
+   it, and on `main` run `git log -1 --pretty=%B`. You should see the template above with your PR
+   body under `DESCRIPTION` and nothing appended after it. If you see extra commit summary lines
+   after your description, go back to step 4. If you see no template at all — just
+   `Merge pull request #123 in PROJECT/repo from feature-branch to main` — the merge commit
+   message option from step 3 wasn't actually saved; go back there.
 
 ### B. Add the pipeline to your repo
 
@@ -447,8 +447,8 @@ steps:
 Swap `PLUGIN_CHANGELOG_LEVEL`, `PLUGIN_REPO`, and the two image names for your own values, then
 test: open a throwaway PR (`pr.yml` should compute versions and build images, touching no git
 state), then merge it (`publish.yml` should push a changelog commit and a tag to `main`). If the
-merge run produces nothing, re-check part A first — a missing/incorrect squash template is the
-most common cause.
+merge run produces nothing, re-check part A first — a missing/incorrect commit message template,
+or commit summaries left enabled, is the most common cause.
 
 ### C. Release a hotfix
 
