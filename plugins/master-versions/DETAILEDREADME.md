@@ -138,7 +138,7 @@ Not `git tag -l --sort=-version:refname`, which was tried and rejected — it pi
 highest matching tag with zero regard for ancestry, so a hotfix branch cut from `nati-v1.0.0`
 would resolve against a mainline `nati-v2.0.0` it shares no history with. `git describe` walks
 ancestry from `<resolved_ref>` instead, so it only ever finds a tag actually reachable from that
-branch. Full rationale and worked examples: `HOTFIX_TAG_RESOLUTION.md`.
+branch. Full rationale and worked examples: `BUGS_AND_FIXES.md` §2.
 
 ### STEP 2 — bump calculation (subject line only)
 

@@ -310,7 +310,7 @@ is persisted until the merge.
 `evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'`. This is deliberately not
 `pull_request_closed` — that event also fires on PR decline and PR delete, which would silently
 push stale changelogs and tags for a PR that never actually merged (see
-`INCIDENT_PULL_REQUEST_CLOSED_TRAP.md` for the incident this guards against).
+`BUGS_AND_FIXES.md` §1 for the incident this guards against).
 
 By the time this fires, there is no PR context left — `CI_COMMIT_PULL_REQUEST` isn't set on a
 plain push — so the Bitbucket-API path used by `pull_request` isn't available here.

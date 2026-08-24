@@ -767,7 +767,7 @@ class TestBumpSubject(unittest.TestCase):
 #                    CI_COMMIT_PULL_REQUEST)
 #   manual        -> PLUGIN_MESSAGE env var as-is
 #   anything else -> git log -1 --pretty=%B, extracting the DESCRIPTION
-#                    section (see INCIDENT_PULL_REQUEST_CLOSED_TRAP.md)
+#                    section (see BUGS_AND_FIXES.md §1)
 # ---------------------------------------------------------------------------
 
 class TestRetrieveMessage(unittest.TestCase):
@@ -1528,7 +1528,7 @@ class TestBranchResolution(unittest.TestCase):
         Checks: CI_PIPELINE_EVENT=pull_request + CI_COMMIT_TARGET_BRANCH=main
                 fetches 'main' into a fresh remote-tracking ref, with NEITHER
                 --tags nor --no-tags (relies on git's default auto-follow, see
-                HOTFIX_TAG_RESOLUTION.md), authenticated with a Bearer header.
+                BUGS_AND_FIXES.md §2), authenticated with a Bearer header.
         """
         mock_cmd = self._run({
             "CI_PIPELINE_EVENT":       "pull_request",
