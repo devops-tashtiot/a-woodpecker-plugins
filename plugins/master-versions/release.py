@@ -480,7 +480,7 @@ def _retrieve_push_message():
     """
     Any other event -> assume a push carrying a PR merge commit, and extract
     the DESCRIPTION section from `git log -1 --pretty=%B` (see
-    INCIDENT_PULL_REQUEST_CLOSED_TRAP.md for why a push event, not
+    BUGS_AND_FIXES.md §1 for why a push event, not
     pull_request_closed, is used to detect a merge).
     """
     result = run_command("git log -1 --pretty=%B")
@@ -614,7 +614,7 @@ def release():
                 print("      " + commit.replace("\n", "\n      "))
 
     # ── Resolve branch for ancestry-correct tag lookup ────────────────────────
-    # See HOTFIX_TAG_RESOLUTION.md for the full design rationale. In short: a
+    # See BUGS_AND_FIXES.md §2 for the full design rationale. In short: a
     # plain `git fetch` (NO --tags/--no-tags) lets git's tag auto-follow attach
     # only tags whose commit is reachable from the fetched branch — which keeps
     # tag lookups branch-scoped (a mainline nati-v2.0.0 never lands on a hotfix
@@ -671,7 +671,7 @@ def release():
         else:
             # Falling back to HEAD here would silently resolve tags against
             # whatever happens to be checked out instead of the branch that
-            # actually governs this run (see HOTFIX_TAG_RESOLUTION.md) — that
+            # actually governs this run (see BUGS_AND_FIXES.md §2) — that
             # can compute a version bump from the wrong base entirely. Fail
             # loudly instead of guessing.
             print(f">>> ERROR: could not fetch branch '{resolve_branch}' ({fetch_result.stderr.strip()}) — "
@@ -724,7 +724,7 @@ def release():
                   f"to calculate versions against it (will restore afterward)")
         else:
             # Falling back to the PR's own branch here would compute every
-            # version against the WRONG base (see HOTFIX_TAG_RESOLUTION.md) —
+            # version against the WRONG base (see BUGS_AND_FIXES.md §2) —
             # fail loudly instead of silently releasing a wrong version.
             print(f">>> ERROR: could not check out target branch '{resolve_branch}' "
                   f"({checkout.stderr.strip()}) — refusing to compute versions against the wrong branch.")
@@ -809,7 +809,7 @@ def release():
             # --tag-pattern stays the FULL unrestricted component glob (never
             # narrowed) — git-cliff validates the computed next version against
             # it too, so a narrowed pattern would reject a breaking bump crossing
-            # e.g. 1.0.0 -> 2.0.0 (see HOTFIX_TAG_RESOLUTION.md §2).
+            # e.g. 1.0.0 -> 2.0.0 (see BUGS_AND_FIXES.md §2).
             # --use-branch-tags makes git-cliff consider only tags reachable from
             # the checked-out HEAD, so branch scoping is correct even when the
             # clone brought EVERY tag (tags: true). With tags: false only the
