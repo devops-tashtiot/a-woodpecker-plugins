@@ -329,7 +329,7 @@ the pipeline after a PR is merged.
 | Secret | Value |
 |---|---|
 | `bitbucket_token` | A Bitbucket HTTP access token with read access to this repo |
-| `artifactory_token` | Only needed if you're adding the `buildah-master-versions` step below — password/token for the registry you push built images to (`PLUGIN_USERNAME` is a plain value, not a secret) |
+| `artifactory_token` | Only needed if you're adding the `buildah-master-versions` step below — password/token for the registry you push built images to (`username` is a plain value, not a secret) |
 
 **When to include the `Build and push plugin images` step (`buildah-master-versions`):** only if
 your components have their own `Dockerfile` and you actually want an image built and pushed for
@@ -363,13 +363,13 @@ steps:
   - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
     privileged: true
-    environment:
-      PLUGIN_BASE_PATH: "."
-      PLUGIN_TAGS_FILE: "new_tags.txt"
-      PLUGIN_REGISTRY: "artifactory.example.com"
-      PLUGIN_REPO: "myorg"
-      PLUGIN_USERNAME: "admin"
-      PLUGIN_PASSWORD:
+    settings:
+      base_path: .
+      tags_file: new_tags.txt
+      registry: artifactory.example.com
+      repo: myorg
+      username: admin
+      password:
         from_secret: artifactory_token
 ```
 
@@ -414,13 +414,13 @@ steps:
   - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
     privileged: true
-    environment:
-      PLUGIN_BASE_PATH: "."
-      PLUGIN_TAGS_FILE: "new_tags.txt"
-      PLUGIN_REGISTRY: "artifactory.example.com"
-      PLUGIN_REPO: "myorg"
-      PLUGIN_USERNAME: "admin"
-      PLUGIN_PASSWORD:
+    settings:
+      base_path: .
+      tags_file: new_tags.txt
+      registry: artifactory.example.com
+      repo: myorg
+      username: admin
+      password:
         from_secret: artifactory_token
 
   - name: Push changelogs to Git
@@ -540,13 +540,13 @@ steps:
   - name: Build and push plugin images
     image: netanelzucaim123/buildah-master-versions:latest
     privileged: true
-    environment:
-      PLUGIN_BASE_PATH: "."
-      PLUGIN_TAGS_FILE: "new_tags.txt"
-      PLUGIN_REGISTRY: "artifactory.example.com"
-      PLUGIN_REPO: "myorg"
-      PLUGIN_USERNAME: "admin"
-      PLUGIN_PASSWORD:
+    settings:
+      base_path: .
+      tags_file: new_tags.txt
+      registry: artifactory.example.com
+      repo: myorg
+      username: admin
+      password:
         from_secret: artifactory_token
 ```
 
