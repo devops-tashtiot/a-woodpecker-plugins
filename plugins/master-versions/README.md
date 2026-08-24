@@ -329,14 +329,14 @@ the pipeline after a PR is merged.
 | Secret | Value |
 |---|---|
 | `bitbucket_token` | A Bitbucket HTTP access token with read access to this repo |
-| `docker_username` / `docker_password` | Only needed if you're adding the `buildah-master-versions` step below — credentials for the registry you push built images to |
+| `artifactory_token` | Only needed if you're adding the `buildah-master-versions` step below — password/token for the registry you push built images to (`PLUGIN_USERNAME` is a plain value, not a secret) |
 
 **When to include the `Build and push plugin images` step (`buildah-master-versions`):** only if
 your components have their own `Dockerfile` and you actually want an image built and pushed for
 every tag `master-versions` creates. It reads `PLUGIN_OUTPUT_TAGS_FILE` (`new_tags.txt`) and
 resolves each tag to `PLUGIN_BASE_PATH/<location>/Dockerfile`. If you only need versioning and
-changelogs — no image builds — drop this step (and the `docker_username`/`docker_password`
-secrets) from both pipelines below; everything else still works unchanged.
+changelogs — no image builds — drop this step (and the `artifactory_token` secret) from both
+pipelines below; everything else still works unchanged.
 
 **Create `.woodpecker/pr.yml`** — runs on every PR, computes candidate versions and builds
 images, never touches git:
@@ -366,12 +366,11 @@ steps:
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_TAGS_FILE: "new_tags.txt"
+      PLUGIN_REGISTRY: "artifactory.example.com"
       PLUGIN_REPO: "myorg"
-    secrets:
-      - source: docker_username
-        target: plugin_username
-      - source: docker_password
-        target: plugin_password
+      PLUGIN_USERNAME: "admin"
+      PLUGIN_PASSWORD:
+        from_secret: artifactory_token
 ```
 
 **Create `.woodpecker/publish.yml`** — the only pipeline that ever writes back to git:
@@ -418,12 +417,11 @@ steps:
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_TAGS_FILE: "new_tags.txt"
+      PLUGIN_REGISTRY: "artifactory.example.com"
       PLUGIN_REPO: "myorg"
-    secrets:
-      - source: docker_username
-        target: plugin_username
-      - source: docker_password
-        target: plugin_password
+      PLUGIN_USERNAME: "admin"
+      PLUGIN_PASSWORD:
+        from_secret: artifactory_token
 
   - name: Push changelogs to Git
     image: alpine/git
@@ -545,12 +543,11 @@ steps:
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_TAGS_FILE: "new_tags.txt"
+      PLUGIN_REGISTRY: "artifactory.example.com"
       PLUGIN_REPO: "myorg"
-    secrets:
-      - source: docker_username
-        target: plugin_username
-      - source: docker_password
-        target: plugin_password
+      PLUGIN_USERNAME: "admin"
+      PLUGIN_PASSWORD:
+        from_secret: artifactory_token
 ```
 
 > Set `fail_on_mismatch: true` to fail the PR build when the description and the actual changed
