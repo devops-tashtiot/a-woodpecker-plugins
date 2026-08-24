@@ -204,9 +204,12 @@ state the clone leaves the workspace in, `release.py` repairs it before computin
 **`PLUGIN_BITBUCKET_TOKEN` is also used for this fetch, not just the PR-description lookup.**
 The plugin's own step image has no Bitbucket credentials of its own, so the token is sent as an
 `Authorization: Bearer <token>` header via `git -c http.extraHeader=…` (the only scheme Bitbucket
-DC HTTP tokens accept). Without it the fetch 401s, no tags are visible, and every component is
-mistakenly treated as a first release (recreating `…-v1.0.0` instead of bumping) — so set it on
-any event where you want correct version bumps, not just `pull_request`.
+DC HTTP tokens accept). Without it the fetch 401s — and since this branch fetch runs whenever
+`resolve_branch` is set (`CI_COMMIT_BRANCH`/`CI_COMMIT_TARGET_BRANCH`, present on essentially
+every real Woodpecker run, `manual` and `push` included, not just `pull_request`), the fetch
+failure hits `release.py`'s fail-fast path (§7) and exits the run with code 1 rather than
+silently mis-detecting components as first releases — that was the pre-fail-fast behavior. Set
+`PLUGIN_BITBUCKET_TOKEN` on every event.
 
 **Works with the clone's `tags: true` OR `tags: false`.** Version resolution is always scoped to
 the correct branch, regardless of how many tags the clone brought into the workspace:
