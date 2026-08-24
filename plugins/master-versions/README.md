@@ -367,7 +367,7 @@ steps:
       base_path: .
       tags_file: new_tags.txt
       registry: harbor.devopstashtiot.page
-      repo: myorg
+      repo: plugins
       username: admin
       password:
         from_secret: artifactory_token
@@ -418,7 +418,7 @@ steps:
       base_path: .
       tags_file: new_tags.txt
       registry: harbor.devopstashtiot.page
-      repo: myorg
+      repo: plugins
       username: admin
       password:
         from_secret: artifactory_token
@@ -544,7 +544,7 @@ steps:
       base_path: .
       tags_file: new_tags.txt
       registry: harbor.devopstashtiot.page
-      repo: myorg
+      repo: plugins
       username: admin
       password:
         from_secret: artifactory_token
