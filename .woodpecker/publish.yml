@@ -63,7 +63,7 @@ steps:
     environment:
       PLUGIN_BASE_PATH: "."
       PLUGIN_REGISTRY: "harbor.devopstashtiot.page"
-      PLUGIN_REPO: ""
+      PLUGIN_REPO: "woodpecker"
       PLUGIN_TAGS_FILE: "new_tags.txt"
       PLUGIN_ALIASES: "prod"
       PLUGIN_USERNAME: "admin"
