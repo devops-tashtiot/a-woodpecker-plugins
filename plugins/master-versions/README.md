@@ -272,13 +272,7 @@ The plugin retrieves its own message — there's no explicit input step. It look
 |---|---|
 | `manual` | You type the release message directly into Woodpecker's trigger dialog. For a hotfix branch or any release without a PR to source from. |
 | `pull_request` | Fetches the PR's live description from Bitbucket. Computes candidate versions and builds images only — never pushes a changelog or creates a tag. |
-| `push` to `main` (a PR merge) | The only event that persists anything — reads the PR description out of the squash-merge commit and creates the real release. Requires the Bitbucket setup in [§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix). |
-
-**The `push` row is gated, not just any push to `main`.** `publish.yml`'s trigger for it is
-`branch: main` **and** `evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` — so this
-event fires only when the commit message contains that exact text, which only a real PR merge
-produces (via the squash template from §7A). A direct push to `main` that isn't a PR merge never
-matches `evaluate:` and never triggers this pipeline at all — not even as a "skipped" run.
+| `push` to `main` (a PR merge) | Gated by `branch: main` **and** `evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` — a direct push to `main` that isn't a PR merge never matches this and never triggers the pipeline at all, not even as a "skipped" run. The only event that persists anything: reads the PR description out of the squash-merge commit (which only a real merge produces this text on, via the squash template from §7A) and creates the real release. Requires the Bitbucket setup in [§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix). |
 
 Full mechanics for each — exact functions, why `pull_request` never persists, the `DESCRIPTION`
 extraction and its edge case — are in `DETAILEDREADME.md` §6.
