@@ -245,47 +245,11 @@ feat[base/infra/x]: rules                    → SKIP   (depth 3 ∉ {2,4})
 |----------|-------------|
 | `PLUGIN_BASE_PATH` | Root directory all `[location]` paths are resolved against. Getting this wrong silently breaks tag names, CHANGELOG paths, and directory resolution. When in doubt use `"."` and write full relative paths in `[]`. |
 | `PLUGIN_CHANGELOG_LEVEL` | Enforces the expected path depth of every `[location]`. A single depth (`2`) or a comma-separated set of depths (`2,3,4`); a location is accepted if its depth is in the set. Lines with non-matching depth are skipped. If not set the plugin exits with code 1. |
+| `PLUGIN_MESSAGE` | Required only for a `manual` run — the text to parse. Not used for `pull_request` or `push` events (those retrieve the message themselves). See [§6](#6-triggering-events--manual-pull_request-and-push-merge). |
+| `PLUGIN_BITBUCKET_TOKEN` | Required for `pull_request` events (fetches the PR description) and for correct tag resolution on any event. See [§6](#6-triggering-events--manual-pull_request-and-push-merge). |
 
-### Message retrieval
-
-The plugin retrieves the message to parse itself — there's no file-path input for it. It dispatches on `CI_PIPELINE_EVENT` (a Woodpecker-provided variable, not user-set):
-
-| `CI_PIPELINE_EVENT` | Source | Required variables |
-|---|---|---|
-| `pull_request` | Fetched from the Bitbucket Server REST API (`GET .../pull-requests/{id}`), using the PR's `description` field. | `PLUGIN_BITBUCKET_TOKEN`, `CI_FORGE_URL`, `CI_REPO_OWNER`, `CI_REPO_NAME`, `CI_COMMIT_PULL_REQUEST` |
-| `manual` (default) | The `PLUGIN_MESSAGE` env var, used as-is. On a manual run the plugin loudly echoes the full message back — a banner and every line numbered between `BEGIN PLUGIN_MESSAGE` / `END PLUGIN_MESSAGE` markers (tabs shown as `\t`) — so you can see exactly what was submitted. This is the fastest way to spot a mistyped message (e.g. a leading space or a pasted image reference) that would otherwise make every line silently `IGNORED`. | `PLUGIN_MESSAGE` |
-| any other event (e.g. `push`) | `git log -1 --pretty=%B`. If the commit message contains a `DESCRIPTION` section (the custom merge-commit template — see the "Pipeline Integration" notes), only the text after that marker is used; otherwise the full commit message is used. | *(none — reads local git history)* |
-
-The plugin exits with code 1 if the message can't be determined (e.g. a missing required variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is retrieved is also written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
-
-**`PLUGIN_BITBUCKET_TOKEN` is also used for tag resolution.** Before processing any component, the plugin does an authenticated `git fetch` of the resolved branch so git's tag auto-follow pulls the existing version tags (the CI clone uses `tags: false`, so the workspace starts with none). The plugin's own step image has no Bitbucket credentials of its own, so the token is sent as an `Authorization: Bearer <token>` header via `git -c http.extraHeader=…` (the only scheme Bitbucket DC HTTP tokens accept). Without it the fetch 401s, no tags are visible, and every component is mistakenly treated as a first release (recreating `…-v1.0.0` instead of bumping). Set `PLUGIN_BITBUCKET_TOKEN` on any event where you want correct version bumps, not just `pull_request`.
-
-**Works with the clone's `tags: true` OR `tags: false`.** Version resolution is always scoped to the correct branch, regardless of how many tags the clone brought into the workspace:
-
-- git-cliff's bump is invoked with `--use-branch-tags`, so it only considers tags reachable from the checked-out `HEAD`. With `tags: false` only ancestry tags are present anyway (no-op); with `tags: true` (every tag from every branch present) it still resolves correctly — a `fix` on a hotfix cut from `v1.0.0` bumps to `v1.0.1`, never `v2.0.1` from an unrelated mainline `v2.0.0`. **No tags are ever deleted.**
-- Because `--use-branch-tags` looks at the checked-out branch, a `pull_request` run must resolve against its **target** branch, not the PR's own branch. So for `pull_request` events the plugin temporarily `git checkout`s the target branch (`CI_COMMIT_TARGET_BRANCH`), calculates every version there, then checks back to the PR branch before writing any `CHANGELOG.md` (so the changelog files persist for the push step). Non-PR runs calculate directly on the current branch.
-
-**It doesn't matter what you set `partial`, `depth`, or `tags` to on the clone step (or whether you set them at all) — any combination works.** See `DETAILEDREADME.md` for why.
-
-```yaml
-clone:
-  git:
-    image: <your plugin-git image>
-```
-
-**Any git command that could affect a computed version fails the run instead of degrading silently.** Earlier versions of the plugin logged a `WARNING` and fell back to a possibly-wrong ref (e.g. `HEAD` instead of the resolved branch, or the PR's own branch instead of its target) when a fetch/checkout failed — which could silently compute a version from the wrong base. It now exits with code 1 in every case where that would happen:
-
-| Failure | Old behavior | New behavior |
-|---|---|---|
-| `git rev-parse --is-shallow-repository` fails | assumed "not shallow" | exit 1 |
-| Branch fetch (`git fetch origin <branch>:refs/remotes/origin/<branch>`) fails | fell back to resolving against `HEAD` | exit 1 |
-| Unshallow fetch fails (bare local run on a shallow clone) | previously an unrelated `NameError` crash — now a proper diagnosed failure | exit 1 |
-| PR target-branch checkout fails | fell back to computing versions against the PR's own branch | exit 1 |
-| Restoring the original checkout after PR version calculation fails | unchecked — Phase B could write `CHANGELOG.md` files against the wrong tree | exit 1 |
-| `git-cliff --bump` itself exits non-zero | silently treated the same as "no releasable commits" (SKIP) | exit 1 |
-| One component's `CHANGELOG.md` write fails in Phase B | logged an error but the run still exited 0 with the other components released | run still attempts every component, but the process now exits 1 if any failed |
-
-`git config --unset-all remote.origin.tagOpt` is the one exception left unchecked on purpose: it legitimately returns non-zero when the key was never set (e.g. the clone used `tags: true`), which isn't a failure.
+Clone step settings (`partial`, `depth`, `tags`) don't matter — any combination works; see
+`DETAILEDREADME.md` for why.
 
 ### Optional
 
@@ -307,6 +271,41 @@ The plugin retrieves its own message — there's no explicit input step. It look
 `CI_PIPELINE_EVENT` (a Woodpecker-provided variable) and picks one of three retrieval paths.
 This section walks through what actually happens on each, end to end, across this repo's two
 pipelines (`.woodpecker/pr.yml` and `.woodpecker/publish.yml`).
+
+### Required Bitbucket setting: squash merge with `DESCRIPTION` injected into the commit
+
+For the `push` event below to see the PR description at all, this repo's Bitbucket merge
+strategy must be configured to carry it into the commit that lands on `main`:
+
+1. In Bitbucket Server/DC → repository **Settings → Pull Requests → Merge strategies**, set the
+   merge strategy to **Squash** (keeps `main` at one commit per PR, matching this pipeline's
+   assumption that `git log -1` on the push *is* the whole merge).
+2. Customize that strategy's **commit message template** to include a `DESCRIPTION` header
+   followed by the PR description variable:
+   ```
+   Merge pull request #${id} from ${fromRefName}
+
+   METADATA
+   Title: ${title}
+   Target: ${toRepoSlug} (${toRefName})
+   Source: ${fromRepoSlug} (${fromRefName})
+
+   DESCRIPTION
+   ${description}
+   ```
+3. Set **max commit summaries to `0`**, so the squashed source-branch commit messages aren't
+   appended below `DESCRIPTION` — otherwise they get parsed too, as extra (likely garbage)
+   commit lines alongside the real PR body.
+
+**If this isn't configured:** `_retrieve_push_message()` still runs, finds no `DESCRIPTION`
+marker, logs a `WARNING`, and falls back to the full merge commit body — which on Bitbucket's
+*default* template is just `Merge pull request #123 from feature-branch`, containing no
+`[location]` lines at all. The pipeline "succeeds" and silently releases nothing on every merge.
+
+The template's first line matters beyond `DESCRIPTION` extraction, too: `publish.yml`'s
+`evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` guard depends on it staying
+`Merge pull request #...` — changing that opening line means updating the `evaluate:` guard as
+well, or `publish.yml` will never fire on a real merge.
 
 ### `manual` — you trigger a run yourself
 
@@ -361,41 +360,6 @@ Once the message is retrieved, `publish.yml`'s `Run release (merge)` step comput
 version, builds and pushes the real images, and the final `Push changelogs to Git` step commits
 `CHANGELOG.md` files and creates the release tags — the only point in either pipeline where
 anything is actually persisted back to git.
-
-### Required Bitbucket setting: squash merge with `DESCRIPTION` injected into the commit
-
-For the `push` event above to see the PR description at all, this repo's Bitbucket merge
-strategy must be configured to carry it into the commit that lands on `main`:
-
-1. In Bitbucket Server/DC → repository **Settings → Pull Requests → Merge strategies**, set the
-   merge strategy to **Squash** (keeps `main` at one commit per PR, matching this pipeline's
-   assumption that `git log -1` on the push *is* the whole merge).
-2. Customize that strategy's **commit message template** to include a `DESCRIPTION` header
-   followed by the PR description variable:
-   ```
-   Merge pull request #${id} from ${fromRefName}
-
-   METADATA
-   Title: ${title}
-   Target: ${toRepoSlug} (${toRefName})
-   Source: ${fromRepoSlug} (${fromRefName})
-
-   DESCRIPTION
-   ${description}
-   ```
-3. Set **max commit summaries to `0`**, so the squashed source-branch commit messages aren't
-   appended below `DESCRIPTION` — otherwise they get parsed too, as extra (likely garbage)
-   commit lines alongside the real PR body.
-
-**If this isn't configured:** `_retrieve_push_message()` still runs, finds no `DESCRIPTION`
-marker, logs a `WARNING`, and falls back to the full merge commit body — which on Bitbucket's
-*default* template is just `Merge pull request #123 from feature-branch`, containing no
-`[location]` lines at all. The pipeline "succeeds" and silently releases nothing on every merge.
-
-The template's first line matters beyond `DESCRIPTION` extraction, too: `publish.yml`'s
-`evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'` guard depends on it staying
-`Merge pull request #...` — changing that opening line means updating the `evaluate:` guard as
-well, or `publish.yml` will never fire on a real merge.
 
 ---
 

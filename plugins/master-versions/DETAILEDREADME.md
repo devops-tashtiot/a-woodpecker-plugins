@@ -11,6 +11,8 @@ Technical reference for how `master-versions` works under the hood.
 3. [cliff.toml explained](#3-clifftoml-explained)
 4. [How git-cliff is called internally](#4-how-git-cliff-is-called-internally)
 5. [Clone settings don't matter — how shallow/partial clones are handled](#5-clone-settings-dont-matter--how-shallowpartial-clones-are-handled)
+6. [Message retrieval — per-event dispatch](#6-message-retrieval--per-event-dispatch)
+7. [Fail-fast error handling](#7-fail-fast-error-handling)
 
 ---
 
@@ -24,7 +26,7 @@ By default git-cliff reads from the git log. This plugin does **not** use that m
 
 ## 2. Stateless mode — how this plugin uses git-cliff
 
-This plugin bypasses git history entirely. Instead of reading commits from the log, it injects the exact commit string — retrieved internally based on `CI_PIPELINE_EVENT` (see the README's "Message retrieval" section) — directly into git-cliff via `--with-commit`.
+This plugin bypasses git history entirely. Instead of reading commits from the log, it injects the exact commit string — retrieved internally based on `CI_PIPELINE_EVENT` (see [§6](#6-message-retrieval--per-event-dispatch)) — directly into git-cliff via `--with-commit`.
 
 The key flags that make this work:
 
@@ -198,3 +200,68 @@ describe` only needs commit and tag objects, never tree/blob content.
 
 This is why the clone step's `partial`/`depth`/`tags` settings are non-load-bearing: whatever
 state the clone leaves the workspace in, `release.py` repairs it before computing any version.
+
+**`PLUGIN_BITBUCKET_TOKEN` is also used for this fetch, not just the PR-description lookup.**
+The plugin's own step image has no Bitbucket credentials of its own, so the token is sent as an
+`Authorization: Bearer <token>` header via `git -c http.extraHeader=…` (the only scheme Bitbucket
+DC HTTP tokens accept). Without it the fetch 401s, no tags are visible, and every component is
+mistakenly treated as a first release (recreating `…-v1.0.0` instead of bumping) — so set it on
+any event where you want correct version bumps, not just `pull_request`.
+
+**Works with the clone's `tags: true` OR `tags: false`.** Version resolution is always scoped to
+the correct branch, regardless of how many tags the clone brought into the workspace:
+
+- git-cliff's bump is invoked with `--use-branch-tags`, so it only considers tags reachable from
+  the checked-out `HEAD`. With `tags: false` only ancestry tags are present anyway (no-op); with
+  `tags: true` (every tag from every branch present) it still resolves correctly — a `fix` on a
+  hotfix cut from `v1.0.0` bumps to `v1.0.1`, never `v2.0.1` from an unrelated mainline `v2.0.0`.
+  **No tags are ever deleted.**
+- Because `--use-branch-tags` looks at the checked-out branch, a `pull_request` run must resolve
+  against its **target** branch, not the PR's own branch. So for `pull_request` events the plugin
+  temporarily `git checkout`s the target branch (`CI_COMMIT_TARGET_BRANCH`), calculates every
+  version there, then checks back to the PR branch before writing any `CHANGELOG.md` (so the
+  changelog files persist for the push step). Non-PR runs calculate directly on the current
+  branch.
+
+---
+
+## 6. Message retrieval — per-event dispatch
+
+The plugin retrieves the message to parse itself — there's no file-path input for it. It
+dispatches on `CI_PIPELINE_EVENT` (a Woodpecker-provided variable, not user-set); see the
+README's §6 "Triggering events" for the full walkthrough of each case. The exact dispatch:
+
+| `CI_PIPELINE_EVENT` | Source | Required variables |
+|---|---|---|
+| `pull_request` | Fetched from the Bitbucket Server REST API (`GET .../pull-requests/{id}`), using the PR's `description` field. | `PLUGIN_BITBUCKET_TOKEN`, `CI_FORGE_URL`, `CI_REPO_OWNER`, `CI_REPO_NAME`, `CI_COMMIT_PULL_REQUEST` |
+| `manual` (default) | The `PLUGIN_MESSAGE` env var, used as-is. On a manual run the plugin loudly echoes the full message back — a banner and every line numbered between `BEGIN PLUGIN_MESSAGE` / `END PLUGIN_MESSAGE` markers (tabs shown as `\t`) — so you can see exactly what was submitted. This is the fastest way to spot a mistyped message (e.g. a leading space or a pasted image reference) that would otherwise make every line silently `IGNORED`. | `PLUGIN_MESSAGE` |
+| any other event (e.g. `push`) | `git log -1 --pretty=%B`. If the commit message contains a `DESCRIPTION` section (the custom merge-commit template — see README §7A), only the text after that marker is used; otherwise the full commit message is used. | *(none — reads local git history)* |
+
+The plugin exits with code 1 if the message can't be determined (e.g. a missing required
+variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is retrieved is also
+written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for
+override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
+
+---
+
+## 7. Fail-fast error handling
+
+Any git command that could affect a computed version fails the run instead of degrading silently.
+Earlier versions of the plugin logged a `WARNING` and fell back to a possibly-wrong ref (e.g.
+`HEAD` instead of the resolved branch, or the PR's own branch instead of its target) when a
+fetch/checkout failed — which could silently compute a version from the wrong base. It now exits
+with code 1 in every case where that would happen:
+
+| Failure | Old behavior | New behavior |
+|---|---|---|
+| `git rev-parse --is-shallow-repository` fails | assumed "not shallow" | exit 1 |
+| Branch fetch (`git fetch origin <branch>:refs/remotes/origin/<branch>`) fails | fell back to resolving against `HEAD` | exit 1 |
+| Unshallow fetch fails (bare local run on a shallow clone) | previously an unrelated `NameError` crash — now a proper diagnosed failure | exit 1 |
+| PR target-branch checkout fails | fell back to computing versions against the PR's own branch | exit 1 |
+| Restoring the original checkout after PR version calculation fails | unchecked — Phase B could write `CHANGELOG.md` files against the wrong tree | exit 1 |
+| `git-cliff --bump` itself exits non-zero | silently treated the same as "no releasable commits" (SKIP) | exit 1 |
+| One component's `CHANGELOG.md` write fails in Phase B | logged an error but the run still exited 0 with the other components released | run still attempts every component, but the process now exits 1 if any failed |
+
+`git config --unset-all remote.origin.tagOpt` is the one exception left unchecked on purpose: it
+legitimately returns non-zero when the key was never set (e.g. the clone used `tags: true`),
+which isn't a failure.
