@@ -411,7 +411,17 @@ You need **repository admin** rights. This is what makes the release description
 the pipeline after a PR is merged.
 
 1. Repo → **Repository settings** (gear icon) → **Pull Requests**.
-2. Under **Merge strategies**, restrict the repo to **Squash** only, and set it as the default.
+2. Under **Merge strategies**, set **Squash** as the default. The `DESCRIPTION` template in step
+   3 only ever applies to a Squash merge — whoever merges a PR still picks the strategy for that
+   merge, and Bitbucket lets you leave other strategies enabled if you want that flexibility. But
+   picking anything other than Squash for a given merge silently skips the release: a `no-ff`
+   merge commit still matches `publish.yml`'s `evaluate: CI_COMMIT_MESSAGE contains "Merge pull
+   request"` guard and the pipeline still runs — it just merges with **no `DESCRIPTION` section**,
+   so the release step finds nothing to release and that merge quietly ships nothing. **Disabling
+   every other strategy, so Squash is the only option, is the recommended way to avoid this** —
+   nobody merging a PR can forget and pick the wrong one. If you do restrict it, order matters:
+   Bitbucket won't let you disable whichever strategy is currently the default, so set Squash as
+   default *first* — only then does e.g. **Merge commit** become disableable.
 3. On the Squash strategy, turn on the custom commit message option and paste this template
    exactly:
    ```
@@ -428,8 +438,9 @@ the pipeline after a PR is merged.
 4. Under **Commit summaries**, set the maximum to `0`.
 5. Save, then verify: open a throwaway PR with a body like `feat[nati]: verify squash template`,
    merge it, and on `main` run `git log -1 --pretty=%B`. You should see the template above with
-   your PR body under `DESCRIPTION`. If you only see `Merge pull request #123 from
-   feature-branch`, the template didn't save — repeat step 3.
+   your PR body under `DESCRIPTION`. If you only see `Merge pull request #123 in PROJECT/repo
+   from feature-branch to main` with nothing else, the merge used a non-Squash strategy — go back
+   to step 2, not step 3; the template itself only ever applies to a Squash merge.
 
 ### B. Add the pipeline to your repo
 
