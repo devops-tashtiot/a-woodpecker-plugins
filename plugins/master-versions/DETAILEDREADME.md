@@ -275,6 +275,61 @@ variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is ret
 written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for
 override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
 
+### `manual` — you trigger a run yourself
+
+You open Woodpecker's UI (or CLI) and manually trigger a pipeline, typing the release message
+into the trigger dialog's `MESSAGE` field. `publish.yml`'s `Run release (manual)` step passes it
+straight through as `PLUGIN_MESSAGE: "${MESSAGE}"`. `_retrieve_manual_message()` uses it as-is
+(no external calls) and — because a mistyped message is the #1 cause of a confusing "nothing
+released" run — echoes it back line-numbered, whitespace-marked, between `BEGIN`/`END
+PLUGIN_MESSAGE` banners, so you can see exactly what was submitted before wondering why a line
+didn't match.
+
+**When to use it:** a hotfix on a branch that never goes through a PR, or any release that
+doesn't have a PR description to source from. First-releasing a new component still goes through
+a PR like any other change — its description drives the release the same way via the
+`pull_request`/`push` path below, nothing special about a first release requires `manual`. There's
+no branch restriction on this trigger (`when: - event: manual` in `publish.yml`, no `branch:`
+filter), so it can run against whatever branch you're on when you trigger it.
+
+### `pull_request` — every PR open/update (`pr.yml`)
+
+Fires whenever a PR is opened or updated against its target branch. The plugin fetches the PR's
+**live** description directly from the Bitbucket Server REST API
+(`_retrieve_pull_request_message()`, using `PLUGIN_BITBUCKET_TOKEN` /
+`CI_FORGE_URL` / `CI_REPO_OWNER` / `CI_REPO_NAME` / `CI_COMMIT_PULL_REQUEST`) — not whatever the
+description said when the PR was first opened.
+
+This run computes what *would* be released and builds the candidate images
+(`Build and push plugin images` step in `pr.yml`) — but it **never** pushes changelog commits
+or creates tags. Doing so would rewrite the PR's own source branch on every push, which would
+both re-trigger the `pull_request` event (Woodpecker does not honor `[skip ci]` on
+`pull_request`, unlike `push`) and — because a brand-new component doesn't exist on the target
+branch yet — re-release `v1.0.0` and duplicate its changelog entry on every single build. This
+event exists purely to preview and validate the release and to produce buildable images; nothing
+is persisted until the merge.
+
+### `push` to the main branch (merge) — the only event that persists anything
+
+`publish.yml` also triggers on `push`, but scoped tightly: `branch: main` **and**
+`evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'`. This is deliberately not
+`pull_request_closed` — that event also fires on PR decline and PR delete, which would silently
+push stale changelogs and tags for a PR that never actually merged (see `BUGS_AND_FIXES.md` §1
+for the incident this guards against).
+
+By the time this fires, there is no PR context left — `CI_COMMIT_PULL_REQUEST` isn't set on a
+plain push — so the Bitbucket-API path used by `pull_request` isn't available here.
+`_retrieve_push_message()` instead reads the merge commit's own body via
+`git log -1 --pretty=%B` and takes everything after a `DESCRIPTION` marker line (mechanics
+below). **This only works if Bitbucket's merge commit actually contains that marker and the PR
+description under it** — which is not what Bitbucket produces by default. That's the required
+setup covered in README §7A.
+
+Once the message is retrieved, `publish.yml`'s `Run release (merge)` step computes every
+version, builds and pushes the real images, and the final `Push changelogs to Git` step commits
+`CHANGELOG.md` files and creates the release tags — the only point in either pipeline where
+anything is actually persisted back to git.
+
 ### How `_retrieve_push_message()` actually finds `DESCRIPTION`
 
 ```python

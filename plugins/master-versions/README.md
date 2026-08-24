@@ -266,64 +266,16 @@ Clone step settings (`partial`, `depth`, `tags`) don't matter — any combinatio
 ## 6. Triggering events — manual, pull_request, and push (merge)
 
 The plugin retrieves its own message — there's no explicit input step. It looks at
-`CI_PIPELINE_EVENT` (a Woodpecker-provided variable) and picks one of three retrieval paths.
-This section walks through what actually happens on each, end to end, across this repo's two
-pipelines (`.woodpecker/pr.yml` and `.woodpecker/publish.yml`).
+`CI_PIPELINE_EVENT` and picks one of three retrieval paths:
 
-### `manual` — you trigger a run yourself
+| Event | What it does |
+|---|---|
+| `manual` | You type the release message directly into Woodpecker's trigger dialog. For a hotfix branch or any release without a PR to source from. |
+| `pull_request` | Fetches the PR's live description from Bitbucket. Computes candidate versions and builds images only — never pushes a changelog or creates a tag. |
+| `push` to `main` (a PR merge) | The only event that persists anything — reads the PR description out of the squash-merge commit and creates the real release. Requires the Bitbucket setup in [§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix). |
 
-You open Woodpecker's UI (or CLI) and manually trigger a pipeline, typing the release message
-into the trigger dialog's `MESSAGE` field. `publish.yml`'s `Run release (manual)` step passes it
-straight through as `PLUGIN_MESSAGE: "${MESSAGE}"`. `_retrieve_manual_message()` uses it as-is
-(no external calls) and — because a mistyped message is the #1 cause of a confusing "nothing
-released" run — echoes it back line-numbered, whitespace-marked, between `BEGIN`/`END
-PLUGIN_MESSAGE` banners, so you can see exactly what was submitted before wondering why a line
-didn't match.
-
-**When to use it:** a hotfix on a branch that never goes through a PR, or any release that
-doesn't have a PR description to source from. First-releasing a new component still goes through
-a PR like any other change — its description drives the release the same way via the
-`pull_request`/`push` path below, nothing special about a first release requires `manual`. There's
-no branch restriction on this trigger (`when: - event: manual` in `publish.yml`, no `branch:`
-filter), so it can run against whatever branch you're on when you trigger it.
-
-### `pull_request` — every PR open/update (`pr.yml`)
-
-Fires whenever a PR is opened or updated against its target branch. The plugin fetches the PR's
-**live** description directly from the Bitbucket Server REST API
-(`_retrieve_pull_request_message()`, using `PLUGIN_BITBUCKET_TOKEN` /
-`CI_FORGE_URL` / `CI_REPO_OWNER` / `CI_REPO_NAME` / `CI_COMMIT_PULL_REQUEST`) — not whatever the
-description said when the PR was first opened.
-
-This run computes what *would* be released and builds the candidate images
-(`Build and push plugin images` step in `pr.yml`) — but it **never** pushes changelog commits
-or creates tags. Doing so would rewrite the PR's own source branch on every push, which would
-both re-trigger the `pull_request` event (Woodpecker does not honor `[skip ci]` on
-`pull_request`, unlike `push`) and — because a brand-new component doesn't exist on the target
-branch yet — re-release `v1.0.0` and duplicate its changelog entry on every single build. This
-event exists purely to preview and validate the release and to produce buildable images; nothing
-is persisted until the merge.
-
-### `push` to the main branch (merge) — the only event that persists anything
-
-`publish.yml` also triggers on `push`, but scoped tightly: `branch: main` **and**
-`evaluate: 'CI_COMMIT_MESSAGE contains "Merge pull request"'`. This is deliberately not
-`pull_request_closed` — that event also fires on PR decline and PR delete, which would silently
-push stale changelogs and tags for a PR that never actually merged (see
-`BUGS_AND_FIXES.md` §1 for the incident this guards against).
-
-By the time this fires, there is no PR context left — `CI_COMMIT_PULL_REQUEST` isn't set on a
-plain push — so the Bitbucket-API path used by `pull_request` isn't available here.
-`_retrieve_push_message()` instead reads the merge commit's own body via
-`git log -1 --pretty=%B` and takes everything after a `DESCRIPTION` marker line. **This only
-works if Bitbucket's merge commit actually contains that marker and the PR description under
-it** — which is not what Bitbucket produces by default. That's the required setup covered in
-[§7A](#7-tutorial--set-up-bitbucket-add-the-pipeline-release-a-hotfix).
-
-Once the message is retrieved, `publish.yml`'s `Run release (merge)` step computes every
-version, builds and pushes the real images, and the final `Push changelogs to Git` step commits
-`CHANGELOG.md` files and creates the release tags — the only point in either pipeline where
-anything is actually persisted back to git.
+Full mechanics for each — exact functions, why `pull_request` never persists, the `DESCRIPTION`
+extraction and its edge case — are in `DETAILEDREADME.md` §6.
 
 ---
 
