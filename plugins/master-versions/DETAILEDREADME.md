@@ -275,6 +275,33 @@ variable, or an empty `PLUGIN_MESSAGE` on a manual run). Whatever message is ret
 written to `pr_body.txt` in the working directory, so later pipeline steps that grep it for
 override values (e.g. `PLUGIN_BASE_PATH=`) keep working.
 
+### How `_retrieve_push_message()` actually finds `DESCRIPTION`
+
+```python
+message = result.stdout      # full `git log -1 --pretty=%B` output
+marker = "DESCRIPTION"
+if marker in message:
+    return message.split(marker, 1)[1].strip()
+```
+
+- `marker in message` is a **plain substring search over the entire commit message**, not a
+  line-anchored "find a line that says `DESCRIPTION`" search.
+- `message.split(marker, 1)` splits at the **first** occurrence of the literal text
+  `"DESCRIPTION"` into two pieces; `[1]` takes everything **after** it, to the end of the string.
+- `.strip()` trims the leading newline right after the `DESCRIPTION` header in the template, and
+  any trailing whitespace.
+
+For the template in README §7A, the marker appears once, as its own header line, so this returns
+exactly the PR description text under it — the intended case.
+
+**Real edge case, not just theoretical:** because the match isn't anchored to a line start, if
+the literal text `DESCRIPTION` ever appeared *earlier* in the message than the actual header —
+e.g. inside the PR title (`${title}`), which the template renders *above* the `DESCRIPTION`
+line — `split(marker, 1)` cuts at that earlier occurrence instead. The result would mix in the
+`Target`/`Source` metadata lines ahead of the real description rather than isolating it cleanly.
+Unlikely in practice (it needs a PR title containing that exact word), but nothing in the current
+code prevents it.
+
 ---
 
 ## 7. Fail-fast error handling
