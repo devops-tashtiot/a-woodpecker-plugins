@@ -956,6 +956,34 @@ class TestRelease(unittest.TestCase):
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
         self.assertIn("nati", calls_str)
 
+    def test_1b_dotted_path_segment_escaped_in_tag_pattern(self):
+        """
+        Checks: a location containing a version-like path segment (e.g. a real
+                component here, base/uv/0.11.29/python-310) has its literal dots
+                escaped in --tag-pattern, a REGEX. tag_glob (shell glob syntax,
+                used for git describe --match / git tag -l) never needs this —
+                a glob '.' is already literal — only the regex is at risk.
+
+        Example:
+          PLUGIN_MESSAGE = "feat[base/uv/0.11.29/python-310]: bump uv"
+          Unescaped, the pattern's '0.11.29' would mean "any-any-any" between
+          the digits it kept literal, so it would ALSO match an unrelated tag
+          like base-uv-0X11X29-python-310-v1.0.0. Escaped, it matches only the
+          real dots.
+        """
+        mock_cmd = self._run(
+            "feat[base/uv/0.11.29/python-310]: bump uv",
+            dirs_exist=["python-310"],
+            changelog_level="4",
+        )
+        # calls_str is str(call(...)), which reprs string args - each real
+        # backslash shows as two in the joined text, hence four here per
+        # escaped character in the actual --tag-pattern value.
+        calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
+        self.assertIn("base\\\\-uv\\\\-0\\\\.11\\\\.29\\\\-python\\\\-310-v", calls_str)
+        # The unescaped form must never appear as a --tag-pattern value.
+        self.assertNotIn("'^base-uv-0.11.29-python-310-v", calls_str)
+
     def test_2_missing_directory_skipped(self):
         """
         Checks: if the component directory does not exist on disk, that location

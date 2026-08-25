@@ -772,8 +772,17 @@ def release():
         else:
             path_slug             = location.replace("/", "-").replace("\\", "-")
             tag_prefix            = f"{path_slug}-{version_prefix}"
+            # tag_glob uses shell glob syntax (git describe --match / git tag -l),
+            # where a literal '.' is already just a literal '.' — no escaping
+            # needed. component_tag_pattern is a REGEX (git-cliff --tag-pattern),
+            # where an unescaped '.' means "any character". A location with a
+            # version number in its own path (e.g. base/uv/0.11.29/python-310,
+            # a real component in this repo) would otherwise have those dots
+            # silently become regex wildcards, loosening the pattern to also
+            # match tags it was never meant to (e.g. a hypothetical
+            # base-uv-0X11X29-python-310-v1.0.0). re.escape() keeps them literal.
             tag_glob              = f"{path_slug}-{version_prefix}[0-9]*"
-            component_tag_pattern = f"^{path_slug}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
+            component_tag_pattern = f"^{re.escape(path_slug)}-{vp}[0-9]+\\.[0-9]+\\.[0-9]+$"
             full_path             = os.path.normpath(os.path.join(root_path, location))
 
         display_name = location if location else "(root)"
