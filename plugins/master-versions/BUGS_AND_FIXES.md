@@ -10,6 +10,7 @@ Combines the former `INCIDENT_PULL_REQUEST_CLOSED_TRAP.md`, `HOTFIX_TAG_RESOLUTI
 1. [The `pull_request_closed` trap — wrong event triggered releases on declined/deleted PRs](#1-the-pull_request_closed-trap--wrong-event-triggered-releases-on-declineddeleted-prs)
 2. [Branch-correct tag resolution — hotfix builds resolved against the wrong tag](#2-branch-correct-tag-resolution--hotfix-builds-resolved-against-the-wrong-tag)
 3. [Bump-subject resolution — multiline commits silently downgraded to a patch bump](#3-bump-subject-resolution--multiline-commits-silently-downgraded-to-a-patch-bump)
+4. [Persisted auth header — a partial clone's implicit lazy-fetch during the PR target-branch checkout needs credentials too](#4-persisted-auth-header--a-partial-clones-implicit-lazy-fetch-during-the-pr-target-branch-checkout-needs-credentials-too)
 
 ---
 
@@ -427,3 +428,74 @@ Upstream bug this whole subject/body split behavior stems from:
 ignored for multiline commits when `conventional_commits = false`." The reporter describes the
 exact same root cause and the same "split into two git-cliff invocations" workaround this
 codebase already uses.
+
+---
+
+## 4. Persisted auth header — a partial clone's implicit lazy-fetch during the PR target-branch checkout needs credentials too
+
+### The problem
+
+A `pull_request` build failed with:
+
+```
+>>> ERROR: could not check out target branch 'main' (fatal: could not read Username for
+'https://bitbucket.devopstashtiot.page': terminal prompts disabled) — refusing to compute
+versions against the wrong branch.
+```
+
+### The cause
+
+`plugin-git`'s default clone is a `tree:0` partial clone — blob/tree objects beyond the checked-out
+commit are deferred, fetched lazily by git itself only when something actually needs them (see
+`DETAILEDREADME.md` §5). For a PR build, only the PR's own source branch is materialized locally.
+
+`release.py` authenticates its *own* fetches against Bitbucket with a `PLUGIN_BITBUCKET_TOKEN`
+Bearer header — but it did so as a one-shot `-c http.extraHeader=...` flag passed to each
+individual `run_command()` call, e.g.:
+
+```python
+auth_opt = f'-c http.extraHeader="Authorization: Bearer {token}" ' if token else ""
+run_command(f"git {auth_opt}fetch ...")
+```
+
+A `-c` flag scopes to that single git process only — it is never written to `.git/config`. So when
+the PR-build path later does `git checkout --detach refs/remotes/origin/<target_branch>` (needed so
+git-cliff's `--use-branch-tags` resolves against the target branch's own history, not the PR
+branch's — see §2 above), and the target branch's tip commit needs blob/tree objects this partial
+clone never fetched, git issues its *own* internal lazy-fetch to pull them in. That internal fetch
+is a separate git process from anything `release.py` invoked directly, so it never saw the `-c`
+flag — it goes out with no credentials at all, Bitbucket returns 401, and git reports it exactly as
+`fatal: could not read Username for '<url>': terminal prompts disabled`.
+
+This is a real gap the shallow-clone self-heal (§5 in `DETAILEDREADME.md`) doesn't cover: that fix
+restores commit *ancestry* (`--unshallow`, for `git describe`, which never touches blob/tree
+content), but does nothing about a `tree:0` filter's missing *blob/tree* content, which only
+matters for the PR-only target-branch checkout — a different operation entirely.
+
+### The fix
+
+Persist the auth header into git config instead of passing it per-command, scoped to the origin
+remote's own scheme+host (derived from `git remote get-url origin`, not hardcoded) so it covers
+*any* git operation against that remote for the rest of the run — including git's own implicit
+lazy-fetch:
+
+```python
+token = os.getenv("PLUGIN_BITBUCKET_TOKEN", "")
+if token:
+    origin_url = run_command("git remote get-url origin").stdout.strip()
+    parsed = urlsplit(origin_url)
+    if parsed.scheme in ("http", "https"):
+        url_prefix = f"{parsed.scheme}://{parsed.netloc}/"
+        run_command(f'git config --add http.{url_prefix}.extraHeader "Authorization: Bearer {token}"')
+```
+
+The explicit fetches (`release.py`'s own target-branch fetch and `--unshallow` fetch) no longer
+need a `-c` flag at all — they inherit the persisted config entry, same as any other git operation
+against that remote, including the target-branch checkout's implicit lazy-fetch.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `plugins/master-versions/release.py` | Replaced the per-command `-c http.extraHeader=...` flag with a persisted `git config --add http.<scheme>://<host>/.extraHeader ...` entry, set once from the token (if present); both explicit fetches simplified to drop the now-redundant flag. |
+| `plugins/master-versions/tests/test_release.py` | `TestBranchResolution._run()` now mocks `git remote get-url origin` to return a real URL (needed for the new config-persist step); `test_2_pr_event_fetches_target_branch_no_tag_flags` asserts the persisted `git config --add ... extraHeader` call instead of the old inline `-c` flag; `test_3_non_pr_also_fetches_its_own_branch_explicitly` asserts neither the header nor a `get-url` lookup happens when no token is set. |

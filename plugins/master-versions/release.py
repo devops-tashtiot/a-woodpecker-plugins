@@ -6,6 +6,7 @@ import shlex
 import sys
 import tomllib
 from urllib.request import urlopen, Request
+from urllib.parse import urlsplit
 
 
 def load_cliff_parsers(toml_path):
@@ -635,15 +636,31 @@ def release():
     # destination refspec forces even for the already-checked-out branch).
     #
     # This step's git has no Bitbucket credentials of its own (the clone step's
-    # plugin-git image holds them, not this image), so a plain `git fetch`
-    # against Bitbucket returns 401 -> "could not read Username". Authenticate
-    # with the same PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
-    # `Authorization: Bearer` header via `-c http.extraHeader` — the only scheme
-    # Bitbucket DC HTTP tokens accept, and the same pattern the mirror-to-github
-    # pipeline uses. The header only affects http(s) transports, so it's inert
-    # for a local-path remote or the later local `git describe`/git-cliff calls.
+    # plugin-git image holds them, not this image), so any http(s) request this
+    # process makes against Bitbucket needs its own auth. Authenticate with the
+    # same PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
+    # `Authorization: Bearer` header — the only scheme Bitbucket DC HTTP tokens
+    # accept, and the same pattern the mirror-to-github pipeline uses.
+    #
+    # Persisted into git config (not passed as a one-shot `-c` flag on each
+    # explicit fetch below) because plugin-git's default clone is a `tree:0`
+    # partial clone: blob/tree objects beyond the checked-out branch are
+    # deferred. Checking out a DIFFERENT branch than the one already
+    # materialized (the PR target-branch checkout below) makes git lazily
+    # fetch the missing objects itself, as git's own internal fetch — outside
+    # any command this script issues directly. A `-c` flag on our own fetches
+    # never reaches that internal fetch; only a persisted config entry does.
+    # Without it, that lazy fetch goes out unauthenticated and Bitbucket
+    # returns 401 -> "could not read Username" (see BUGS_AND_FIXES.md §4).
+    # Scoped to the origin remote's own scheme+host so it's inert for any
+    # other remote a later step might touch.
     token = os.getenv("PLUGIN_BITBUCKET_TOKEN", "")
-    auth_opt = f'-c http.extraHeader="Authorization: Bearer {token}" ' if token else ""
+    if token:
+        origin_url = run_command("git remote get-url origin").stdout.strip()
+        parsed = urlsplit(origin_url)
+        if parsed.scheme in ("http", "https"):
+            url_prefix = f"{parsed.scheme}://{parsed.netloc}/"
+            run_command(f'git config --add http.{url_prefix}.extraHeader "Authorization: Bearer {token}"')
 
     # Make tag resolution work at ANY clone depth (depth: 0 / 1 / 4 / …). A
     # shallow clone severs ancestry at the graft boundary, so `git describe`,
@@ -664,7 +681,7 @@ def release():
 
     resolved_ref = "HEAD"
     if resolve_branch:
-        fetch_result = run_command(f"git {auth_opt}fetch {unshallow_opt}origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
+        fetch_result = run_command(f"git fetch {unshallow_opt}origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
         if fetch_result.returncode == 0:
             resolved_ref = f"refs/remotes/origin/{resolve_branch}"
             print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")
@@ -680,7 +697,7 @@ def release():
     elif is_shallow:
         # No branch to resolve against (e.g. a bare local run), but shallow —
         # deepen the current checkout so describe still has ancestry.
-        unshallow_result = run_command(f"git {auth_opt}fetch --unshallow origin")
+        unshallow_result = run_command("git fetch --unshallow origin")
         if unshallow_result.returncode != 0:
             print(f">>> ERROR: could not unshallow the clone ({unshallow_result.stderr.strip()}) — "
                   f"tag resolution on a shallow clone would misdetect components as first releases.")
