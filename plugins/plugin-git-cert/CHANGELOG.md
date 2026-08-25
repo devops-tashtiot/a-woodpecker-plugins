@@ -1,3 +1,11 @@
+## [plugins-plugin-git-cert-v1.2.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-plugin-git-cert-v1.2.0) - 2026-08-25 13:42
+
+
+### ✨ Features
+
+* feat: feat
+
+
 ## [plugins-plugin-git-cert-v1.1.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-plugin-git-cert-v1.1.0) - 2026-08-25 13:41
 
 
