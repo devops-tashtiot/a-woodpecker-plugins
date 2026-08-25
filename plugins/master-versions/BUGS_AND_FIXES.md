@@ -11,6 +11,7 @@ Combines the former `INCIDENT_PULL_REQUEST_CLOSED_TRAP.md`, `HOTFIX_TAG_RESOLUTI
 2. [Branch-correct tag resolution — hotfix builds resolved against the wrong tag](#2-branch-correct-tag-resolution--hotfix-builds-resolved-against-the-wrong-tag)
 3. [Bump-subject resolution — multiline commits silently downgraded to a patch bump](#3-bump-subject-resolution--multiline-commits-silently-downgraded-to-a-patch-bump)
 4. [Persisted auth header — a partial clone's implicit lazy-fetch during the PR target-branch checkout needs credentials too](#4-persisted-auth-header--a-partial-clones-implicit-lazy-fetch-during-the-pr-target-branch-checkout-needs-credentials-too)
+5. [Known limitation (unfixed) — a component path containing its own X.Y.Z-shaped segment silently caps every bump at patch](#5-known-limitation-unfixed--a-component-path-containing-its-own-xyz-shaped-segment-silently-caps-every-bump-at-patch)
 
 ---
 
@@ -499,6 +500,81 @@ against that remote, including the target-branch checkout's implicit lazy-fetch.
 |---|---|
 | `plugins/master-versions/release.py` | Replaced the per-command `-c http.extraHeader=...` flag with a persisted `git config --add http.<scheme>://<host>/.extraHeader ...` entry, set once from the token (if present); both explicit fetches simplified to drop the now-redundant flag. Also scoped the tag-inventory log (previously an unfiltered, repo-wide `git tag -l` dump) to the component's own glob and the resolved branch's ancestry, matching what resolution itself actually considers. |
 | `.woodpecker/pr.yml`, `.woodpecker/publish.yml` | Repointed the `Run release` steps from the stale `netanelzucaim123/master-versions:v1.0.5` (Docker Hub, predated this refactor) to `harbor.devopstashtiot.page/plugins/master-versions:prod`, manually built and pushed from this fix. (A separate attempt to namespace this under a new `woodpecker` Harbor project was abandoned — that project silently discarded every push server-side; see the project's deletion in a later commit.) |
+| `plugins/master-versions/tests/test_release.py` | `TestBranchResolution._run()` now mocks `git remote get-url origin` to return a real URL (needed for the new config-persist step); `test_2_pr_event_fetches_target_branch_no_tag_flags` asserts the persisted `git config --add ... extraHeader` call instead of the old inline `-c` flag; `test_3_non_pr_also_fetches_its_own_branch_explicitly` asserts neither the header nor a `get-url` lookup happens when no token is set. |
 
 Verified end-to-end: this fix's own PR build (a `pull_request` run against `main`, with `plugin-git`'s default `tree:0` partial clone) is what exercises the exact target-branch-checkout path described above.
-| `plugins/master-versions/tests/test_release.py` | `TestBranchResolution._run()` now mocks `git remote get-url origin` to return a real URL (needed for the new config-persist step); `test_2_pr_event_fetches_target_branch_no_tag_flags` asserts the persisted `git config --add ... extraHeader` call instead of the old inline `-c` flag; `test_3_non_pr_also_fetches_its_own_branch_explicitly` asserts neither the header nor a `get-url` lookup happens when no token is set. |
+
+---
+
+## 5. Known limitation (unfixed) — a component path containing its own X.Y.Z-shaped segment silently caps every bump at patch
+
+### The problem
+
+`base/uv/0.11.29/python-38`, `-39`, `-310`, `-311`, `-312` — five real components in this repo —
+have `0.11.29` (the pinned `uv` toolchain version) as a path segment, producing tags like
+`base-uv-0.11.29-python-310-v1.0.0`. Against these specific components, a `feat[...]` commit
+releases as a **patch** instead of minor, and a `breaking[...]` commit also releases as a
+**patch** instead of major. `fix[...]` is unaffected — it already resolves to a patch, so the bug
+is invisible for that type.
+
+### Root cause — confirmed in git-cliff itself, not in this plugin
+
+`component_tag_pattern` (this repo's `--tag-pattern`) is correctly anchored and escaped (§ above,
+`re.escape(path_slug)`) — that part works. The bug is inside git-cliff's own version-extraction:
+given a previous tag string, it locates the current version by finding the *first* `X.Y.Z`-shaped
+substring anywhere in the tag, not the one `--tag-pattern` is actually anchored to. `0.11.29` is
+itself a valid three-part semver-shaped string, and it appears before the real `-v1.0.0` suffix —
+so git-cliff locks onto `0.11.29` (major `0`) as "the version," and pre-1.0 SemVer convention
+caps further escalation, silently limiting every bump to patch regardless of commit type.
+
+This was proven directly, not inferred: forcing `--bump major` explicitly (bypassing
+auto-detection) against the real tag pattern fails outright with
+
+```
+ERROR git_cliff > Changelog error: `Next version (base-uv-1.0.0) does not match the tag pattern:
+^base\-uv\-0\.11\.29\-python\-310-v[0-9]+\.[0-9]+\.[0-9]+$`
+```
+
+— git-cliff computed `base-uv-1.0.0` as the "next version," i.e. it bumped `0.11.29` itself and
+discarded `python-310-v1.0.0` entirely. That is git-cliff's own stated reasoning, not a guess.
+
+**Precisely scoped, not "any embedded number":** verified with isolated single-tag repos, holding
+everything else constant —
+
+| Embedded path segment | `feat` result | `breaking` result |
+|---|---|---|
+| none (`control-component`) | `v1.1.0` ✅ | `v2.0.0` ✅ |
+| bare number, no dots (`python-310`) | `v1.1.0` ✅ | `v2.0.0` ✅ |
+| two-part `X.Y` (`python-3.10`) | `v1.1.0` ✅ | `v2.0.0` ✅ |
+| full three-part `X.Y.Z` (`uv-0.11.29-python-310`) | `v1.0.1` ❌ | `v1.0.1` ❌ |
+
+Only a complete three-part, two-dot numeric sequence triggers it — the `v` prefix is irrelevant
+either way (`v0.11.29` and `0.11.29` both trigger it identically).
+
+### Why this is being left unfixed for now
+
+Three remediations were considered:
+
+1. **Rename slug generation** to break the three-dot shape at the source (e.g. `0.11.29` →
+   `0-11-29` in the tag name). Fixes it permanently, but changes tag naming for the 5 existing
+   `base/uv/0.11.29/*` components — `git describe --match` on their current tags stops matching,
+   requiring a careful one-time migration (or accepting a tag-history reset for just those 5).
+2. **Reimplement bump-type decision in Python**, bypassing git-cliff's auto-detection entirely.
+   More invasive, more surface area for new bugs, and risks silently diverging from git-cliff's
+   own (correct, when not confused) major/minor/patch rules for every *other* component.
+3. **A clean temporary tag as an indirection layer** — point an unambiguous, throwaway tag at the
+   same commit, let git-cliff bump against that, map the result back onto the real prefix. Verified
+   working directly (`feat` → `v1.1.0`, `breaking` → `v2.0.0` via this route). Rejected as unwanted
+   added complexity for a narrow, rare case.
+
+**Decision: leave it unfixed and handle it manually.** Only 5 components are affected, all sharing
+the same `uv` pin. Until one of the above is revisited:
+
+- A `fix[base/uv/0.11.29/...]` commit is safe — it already resolves correctly.
+- A `feat[base/uv/0.11.29/...]` or `breaking[base/uv/0.11.29/...]!` commit will silently release as
+  a patch. If a real minor/major release is needed for one of these five, create and push the git
+  tag manually (e.g. `git tag base-uv-0.11.29-python-310-v1.1.0 && git push origin --tags`) instead
+  of relying on the automated bump.
+- If `uv` is ever repinned to a version that is *not* itself a clean `X.Y.Z` (unlikely, uv
+  versions are always three-part), or if the directory structure changes, re-verify against the
+  table above before trusting automated bumps again.
