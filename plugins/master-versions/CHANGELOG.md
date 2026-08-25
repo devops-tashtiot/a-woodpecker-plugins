@@ -1,3 +1,11 @@
+## [plugins-master-versions-v2.1.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v2.1.0) - 2026-08-25 13:32
+
+
+### ✨ Features
+
+* feat: nati
+
+
 ## [plugins-master-versions-v2.0.1](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v2.0.1) - 2026-08-10 13:21
 
 
