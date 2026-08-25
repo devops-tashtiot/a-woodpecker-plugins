@@ -2,8 +2,9 @@ FROM docker.io/netanelzucaim123/python-git-cliff:latest
 
 WORKDIR /app
 
-# Build context must be the repo root:
-#   docker build -f plugins/master-versions/Dockerfile -t <image> .
+# Build context must be this directory (plugins/master-versions), not the repo root —
+# the COPY paths below are bare filenames:
+#   docker build -f plugins/master-versions/Dockerfile -t <image> plugins/master-versions
 COPY release.py /app/release.py
 COPY cliff.toml /app/cliff.toml
 

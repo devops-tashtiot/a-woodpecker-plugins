@@ -1473,6 +1473,18 @@ class TestBranchResolution(unittest.TestCase):
         mock_result.stdout = "nati-1.1.0"
         mock_result.stderr = ""
 
+        def fake_run_command(cmd):
+            # The auth-header persistence step (release.py) resolves the
+            # origin remote's URL first, so it needs a real http(s) URL back
+            # — every other command can reuse the generic version-string stub.
+            if cmd == "git remote get-url origin":
+                result = MagicMock()
+                result.returncode = 0
+                result.stdout = "https://bitbucket.example.com/scm/proj/myrepo.git"
+                result.stderr = ""
+                return result
+            return mock_result
+
         env = {
             "PLUGIN_MESSAGE":             "feat[nati]: add login",
             "PLUGIN_BASE_PATH":                "/repo",
@@ -1508,7 +1520,7 @@ class TestBranchResolution(unittest.TestCase):
              patch.object(release_module, "load_cliff_parsers", return_value=(PARSERS, {})), \
              patch("builtins.open", mock_open()), \
              patch.object(release_module, "urlopen", return_value=mock_response), \
-             patch.object(release_module, "run_command", return_value=mock_result) as mock_cmd:
+             patch.object(release_module, "run_command", side_effect=fake_run_command) as mock_cmd:
             release()
 
         return mock_cmd
@@ -1528,16 +1540,23 @@ class TestBranchResolution(unittest.TestCase):
         Checks: CI_PIPELINE_EVENT=pull_request + CI_COMMIT_TARGET_BRANCH=main
                 fetches 'main' into a fresh remote-tracking ref, with NEITHER
                 --tags nor --no-tags (relies on git's default auto-follow, see
-                BUGS_AND_FIXES.md §2), authenticated with a Bearer header.
+                BUGS_AND_FIXES.md §2), and the Bearer auth header is persisted
+                into git config (not passed as a one-shot -c flag) so it also
+                covers git's own implicit lazy-fetch on the later target-branch
+                checkout (see BUGS_AND_FIXES.md §4).
         """
         mock_cmd = self._run({
             "CI_PIPELINE_EVENT":       "pull_request",
             "CI_COMMIT_TARGET_BRANCH": "main",
         })
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
-        # A pull_request run has PLUGIN_BITBUCKET_TOKEN set, so the fetch must be
-        # authenticated with a Bearer header (see Bitbucket DC token gotcha).
-        self.assertIn('git -c http.extraHeader="Authorization: Bearer tok" fetch origin main:refs/remotes/origin/main', calls_str)
+        # The fetch itself is now a plain git fetch — auth comes from the
+        # persisted config entry below, not a per-command -c flag.
+        self.assertIn("git fetch origin main:refs/remotes/origin/main", calls_str)
+        self.assertIn(
+            'git config --add http.https://bitbucket.example.com/.extraHeader "Authorization: Bearer tok"',
+            calls_str,
+        )
         # Step 1 tag lookup should target the fetched branch, not HEAD.
         self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/main", calls_str)
 
@@ -1551,9 +1570,11 @@ class TestBranchResolution(unittest.TestCase):
         mock_cmd = self._run({"CI_COMMIT_BRANCH": "hotfix"})
         calls_str = " ".join(str(c) for c in mock_cmd.call_args_list)
         # This manual run has no PLUGIN_BITBUCKET_TOKEN, so no auth header is
-        # added and the fetch stays a plain `git fetch`.
+        # persisted (and the origin URL is never even looked up) and the
+        # fetch stays a plain `git fetch`.
         self.assertIn("git fetch origin hotfix:refs/remotes/origin/hotfix", calls_str)
-        self.assertNotIn("http.extraHeader", calls_str)
+        self.assertNotIn("extraHeader", calls_str)
+        self.assertNotIn("git remote get-url origin", calls_str)
         self.assertIn("--match 'nati-v[0-9]*' refs/remotes/origin/hotfix", calls_str)
 
     def test_4_neither_var_set_falls_back_to_head(self):

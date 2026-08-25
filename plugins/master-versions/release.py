@@ -6,6 +6,7 @@ import shlex
 import sys
 import tomllib
 from urllib.request import urlopen, Request
+from urllib.parse import urlsplit
 
 
 def load_cliff_parsers(toml_path):
@@ -635,15 +636,31 @@ def release():
     # destination refspec forces even for the already-checked-out branch).
     #
     # This step's git has no Bitbucket credentials of its own (the clone step's
-    # plugin-git image holds them, not this image), so a plain `git fetch`
-    # against Bitbucket returns 401 -> "could not read Username". Authenticate
-    # with the same PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
-    # `Authorization: Bearer` header via `-c http.extraHeader` — the only scheme
-    # Bitbucket DC HTTP tokens accept, and the same pattern the mirror-to-github
-    # pipeline uses. The header only affects http(s) transports, so it's inert
-    # for a local-path remote or the later local `git describe`/git-cliff calls.
+    # plugin-git image holds them, not this image), so any http(s) request this
+    # process makes against Bitbucket needs its own auth. Authenticate with the
+    # same PLUGIN_BITBUCKET_TOKEN used for the PR-body fetch, sent as an
+    # `Authorization: Bearer` header — the only scheme Bitbucket DC HTTP tokens
+    # accept, and the same pattern the mirror-to-github pipeline uses.
+    #
+    # Persisted into git config (not passed as a one-shot `-c` flag on each
+    # explicit fetch below) because plugin-git's default clone is a `tree:0`
+    # partial clone: blob/tree objects beyond the checked-out branch are
+    # deferred. Checking out a DIFFERENT branch than the one already
+    # materialized (the PR target-branch checkout below) makes git lazily
+    # fetch the missing objects itself, as git's own internal fetch — outside
+    # any command this script issues directly. A `-c` flag on our own fetches
+    # never reaches that internal fetch; only a persisted config entry does.
+    # Without it, that lazy fetch goes out unauthenticated and Bitbucket
+    # returns 401 -> "could not read Username" (see BUGS_AND_FIXES.md §4).
+    # Scoped to the origin remote's own scheme+host so it's inert for any
+    # other remote a later step might touch.
     token = os.getenv("PLUGIN_BITBUCKET_TOKEN", "")
-    auth_opt = f'-c http.extraHeader="Authorization: Bearer {token}" ' if token else ""
+    if token:
+        origin_url = run_command("git remote get-url origin").stdout.strip()
+        parsed = urlsplit(origin_url)
+        if parsed.scheme in ("http", "https"):
+            url_prefix = f"{parsed.scheme}://{parsed.netloc}/"
+            run_command(f'git config --add http.{url_prefix}.extraHeader "Authorization: Bearer {token}"')
 
     # Make tag resolution work at ANY clone depth (depth: 0 / 1 / 4 / …). A
     # shallow clone severs ancestry at the graft boundary, so `git describe`,
@@ -664,7 +681,7 @@ def release():
 
     resolved_ref = "HEAD"
     if resolve_branch:
-        fetch_result = run_command(f"git {auth_opt}fetch {unshallow_opt}origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
+        fetch_result = run_command(f"git fetch {unshallow_opt}origin {resolve_branch}:refs/remotes/origin/{resolve_branch}")
         if fetch_result.returncode == 0:
             resolved_ref = f"refs/remotes/origin/{resolve_branch}"
             print(f">>> [INFO] Resolving tags against {'target' if is_pr else 'current'} branch '{resolve_branch}'")
@@ -680,7 +697,7 @@ def release():
     elif is_shallow:
         # No branch to resolve against (e.g. a bare local run), but shallow —
         # deepen the current checkout so describe still has ancestry.
-        unshallow_result = run_command(f"git {auth_opt}fetch --unshallow origin")
+        unshallow_result = run_command("git fetch --unshallow origin")
         if unshallow_result.returncode != 0:
             print(f">>> ERROR: could not unshallow the clone ({unshallow_result.stderr.strip()}) — "
                   f"tag resolution on a shallow clone would misdetect components as first releases.")
@@ -693,15 +710,16 @@ def release():
 
     # ── Diagnostics: the exact workspace state that decides tag resolution ─────
     # Prints once per run so a failing CI run reveals WHY describe finds no tag:
-    # a shallow clone (severs ancestry), tags simply not present (fetch/
-    # auto-follow didn't land them), or an ancestry mismatch.
-    _shallow   = run_command("git rev-parse --is-shallow-repository").stdout.strip()
-    _all_tags  = [t for t in run_command("git tag -l").stdout.strip().splitlines() if t]
-    _commits   = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
-    print(f">>> [DIAG] resolved_ref={resolved_ref}  shallow={_shallow}  "
-          f"commits_reachable={_commits}  total_tags_present={len(_all_tags)}")
-    if _all_tags:
-        print(f">>> [DIAG] tags present: {sorted(_all_tags)}")
+    # a shallow clone (severs ancestry) or the branch fetch itself didn't land.
+    # Which TAGS are actually relevant is a per-component question (each has its
+    # own glob), so that's printed per-location at STEP 1 below, not here — a
+    # single repo-wide tag dump at this point would mix in every other
+    # component's tags plus anything from the PR's own source branch, neither
+    # of which the actual resolution (git describe / git-cliff
+    # --use-branch-tags) ever considers.
+    _shallow = run_command("git rev-parse --is-shallow-repository").stdout.strip()
+    _commits = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
+    print(f">>> [DIAG] resolved_ref={resolved_ref}  shallow={_shallow}  commits_reachable={_commits}")
 
     # ── PHASE A: calculate the next version for every component ────────────────
     # STEP 1 (describe) + STEP 2 (git-cliff --bump) only — no files are written
@@ -773,6 +791,14 @@ def release():
         first_tag = f"{tag_prefix}{initial_tag_version}"
         print(f">>> [INFO] Latest tag (base): "
               f"{latest_tag or f'(none — first release → will use {first_tag})'}")
+        # Exactly what `git describe`/git-cliff --use-branch-tags consider for
+        # THIS component: matches its own glob AND is reachable from
+        # resolved_ref — never other components' tags, never the PR's own
+        # source-branch-only tags. Always printed (not just on a miss) so this
+        # never has to be inferred from the raw `git tag -l` inventory.
+        _relevant_tags = [t for t in run_command(f"git tag -l '{tag_glob}' --merged {resolved_ref}").stdout.strip().splitlines() if t]
+        print(f">>> [DIAG] tags relevant to '{location or '(root)'}' "
+              f"(glob '{tag_glob}', reachable from '{resolved_ref}'): {sorted(_relevant_tags) or '(none)'}")
         if not latest_tag:
             # Distinguish "tag truly absent" from "tag present but describe can't
             # reach it" (ancestry severed, e.g. shallow clone or orphaned commit).
