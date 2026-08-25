@@ -1,6 +1,6 @@
 # Bugs and fixes — design history
 
-Three real bugs found and fixed in `master-versions`, each written up in full: what broke, why,
+Real bugs found and fixed in `master-versions`, each written up in full: what broke, why,
 every alternative considered (and why it was rejected), the fix that shipped, and what changed.
 Combines the former `INCIDENT_PULL_REQUEST_CLOSED_TRAP.md`, `HOTFIX_TAG_RESOLUTION.md`, and
 `BUMP_SUBJECT_RESOLUTION.md` into one file.
