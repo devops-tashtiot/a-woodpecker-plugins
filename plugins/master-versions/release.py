@@ -492,7 +492,7 @@ def _retrieve_push_message():
     marker = "DESCRIPTION"
     if marker in message:
         return message.split(marker, 1)[1].strip()
-    print(f">>> WARNING: no '{marker}' section found in commit message — using the full message as-is")
+    print(f"\033[33m>>> WARNING: no '{marker}' section found in commit message — using the full message as-is\033[0m")
     return message.strip()
 
 
