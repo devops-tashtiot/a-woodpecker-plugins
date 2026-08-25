@@ -719,9 +719,15 @@ def release():
     # --use-branch-tags) ever considers.
     _shallow = run_command("git rev-parse --is-shallow-repository").stdout.strip()
     _commits = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
-    print(f">>> [INFO] Resolved ref:      '{resolved_ref}'")
+    print(f">>> [INFO] Resolved ref:      '{resolved_ref}' — every tag lookup below is scoped to this ref")
     print(f">>> [INFO] Shallow clone:     {_shallow}")
     print(f">>> [INFO] Commits reachable: {_commits}")
+    if _shallow == "true":
+        print(">>> [INFO] Still shallow after the self-heal fetch above — ancestry may still be "
+              "incomplete; tag resolution below can misdetect components as first releases.")
+    elif _commits in ("0", "1"):
+        print(f">>> [INFO] Only {_commits} commit(s) reachable from '{resolved_ref}' — if that looks "
+              "too low for a real branch history, the branch fetch above likely didn't land.")
 
     # ── PHASE A: calculate the next version for every component ────────────────
     # STEP 1 (describe) + STEP 2 (git-cliff --bump) only — no files are written
@@ -786,21 +792,23 @@ def release():
             continue
 
         # ── STEP 1: FIND EXISTING TAGS ────────────────────────────────────────
-        existing_tags_result = run_command(f"git describe --tags --abbrev=0 --match '{tag_glob}' {resolved_ref}")
-        latest_tag = existing_tags_result.stdout.strip() or None
-
         print(f">>> [INFO] Tag glob:          '{tag_glob}'")
-        first_tag = f"{tag_prefix}{initial_tag_version}"
-        print(f">>> [INFO] Latest tag (base): "
-              f"{latest_tag or f'(none — first release → will use {first_tag})'}")
         # Exactly what `git describe`/git-cliff --use-branch-tags consider for
         # THIS component: matches its own glob AND is reachable from
         # resolved_ref — never other components' tags, never the PR's own
         # source-branch-only tags. Always printed (not just on a miss) so this
-        # never has to be inferred from the raw `git tag -l` inventory.
+        # never has to be inferred from the raw `git tag -l` inventory. Printed
+        # BEFORE the conclusion below so the evidence for it is visible first.
         _relevant_tags = [t for t in run_command(f"git tag -l '{tag_glob}' --merged {resolved_ref}").stdout.strip().splitlines() if t]
         print(f">>> [INFO] Tags relevant to '{location or '(root)'}' "
               f"(glob '{tag_glob}', reachable from '{resolved_ref}'): {sorted(_relevant_tags) or '(none)'}")
+
+        existing_tags_result = run_command(f"git describe --tags --abbrev=0 --match '{tag_glob}' {resolved_ref}")
+        latest_tag = existing_tags_result.stdout.strip() or None
+
+        first_tag = f"{tag_prefix}{initial_tag_version}"
+        print(f">>> [INFO] Latest tag (base): "
+              f"{latest_tag or f'(none — first release → will use {first_tag})'}")
         if not latest_tag:
             # Distinguish "tag truly absent" from "tag present but describe can't
             # reach it" (ancestry severed, e.g. shallow clone or orphaned commit).
