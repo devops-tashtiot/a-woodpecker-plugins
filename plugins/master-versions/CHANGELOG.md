@@ -1,3 +1,11 @@
+## [plugins-master-versions-v1.1.1](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.1.1) - 2026-08-25 13:28
+
+
+### 🐛 Bug Fixes
+
+* fix: force fresh image pull on every run
+
+
 ## [plugins-master-versions-v1.1.0](https://bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/a-woodpecker-plugins/browse/browse?refs=plugins-master-versions-v1.1.0) - 2026-08-09 14:30
 
 
