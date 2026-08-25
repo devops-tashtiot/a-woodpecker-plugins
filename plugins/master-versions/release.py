@@ -704,11 +704,11 @@ def release():
             sys.exit(1)
         # git prints fetched ref/tag updates (e.g. "* [new tag] ...") to stderr.
         if unshallow_result.stderr.strip():
-            print(">>> [DIAG] fetch stderr (ref/tag updates):")
+            print(">>> [INFO] Fetch output (ref/tag updates):")
             for _l in unshallow_result.stderr.strip().splitlines():
                 print(f"    {_l}")
 
-    # ── Diagnostics: the exact workspace state that decides tag resolution ─────
+    # ── Workspace state: what decides tag resolution below ────────────────────
     # Prints once per run so a failing CI run reveals WHY describe finds no tag:
     # a shallow clone (severs ancestry) or the branch fetch itself didn't land.
     # Which TAGS are actually relevant is a per-component question (each has its
@@ -719,7 +719,9 @@ def release():
     # --use-branch-tags) ever considers.
     _shallow = run_command("git rev-parse --is-shallow-repository").stdout.strip()
     _commits = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
-    print(f">>> [DIAG] resolved_ref={resolved_ref}  shallow={_shallow}  commits_reachable={_commits}")
+    print(f">>> [INFO] Resolved ref:      '{resolved_ref}'")
+    print(f">>> [INFO] Shallow clone:     {_shallow}")
+    print(f">>> [INFO] Commits reachable: {_commits}")
 
     # ── PHASE A: calculate the next version for every component ────────────────
     # STEP 1 (describe) + STEP 2 (git-cliff --bump) only — no files are written
@@ -797,18 +799,18 @@ def release():
         # source-branch-only tags. Always printed (not just on a miss) so this
         # never has to be inferred from the raw `git tag -l` inventory.
         _relevant_tags = [t for t in run_command(f"git tag -l '{tag_glob}' --merged {resolved_ref}").stdout.strip().splitlines() if t]
-        print(f">>> [DIAG] tags relevant to '{location or '(root)'}' "
+        print(f">>> [INFO] Tags relevant to '{location or '(root)'}' "
               f"(glob '{tag_glob}', reachable from '{resolved_ref}'): {sorted(_relevant_tags) or '(none)'}")
         if not latest_tag:
             # Distinguish "tag truly absent" from "tag present but describe can't
             # reach it" (ancestry severed, e.g. shallow clone or orphaned commit).
             _matching = [t for t in run_command(f"git tag -l '{tag_glob}'").stdout.strip().splitlines() if t]
-            print(f">>> [DIAG] describe stderr: {existing_tags_result.stderr.strip()}")
-            print(f">>> [DIAG] tags matching glob '{tag_glob}' present in repo: {_matching}")
+            print(f">>> [INFO] describe stderr: {existing_tags_result.stderr.strip()}")
+            print(f">>> [INFO] Tags matching glob '{tag_glob}' present in repo: {_matching}")
             if _matching:
                 _t = _matching[0]
                 _anc = run_command(f"git merge-base --is-ancestor {_t} {resolved_ref}")
-                print(f">>> [DIAG] '{_t}' is-ancestor of {resolved_ref}: "
+                print(f">>> [INFO] '{_t}' is-ancestor of {resolved_ref}: "
                       f"{'yes' if _anc.returncode == 0 else 'NO (unreachable → describe skips it)'}")
 
         # Build --with-commit args (shell-safe quoting handles special chars)
