@@ -497,5 +497,8 @@ against that remote, including the target-branch checkout's implicit lazy-fetch.
 
 | File | Change |
 |---|---|
-| `plugins/master-versions/release.py` | Replaced the per-command `-c http.extraHeader=...` flag with a persisted `git config --add http.<scheme>://<host>/.extraHeader ...` entry, set once from the token (if present); both explicit fetches simplified to drop the now-redundant flag. |
+| `plugins/master-versions/release.py` | Replaced the per-command `-c http.extraHeader=...` flag with a persisted `git config --add http.<scheme>://<host>/.extraHeader ...` entry, set once from the token (if present); both explicit fetches simplified to drop the now-redundant flag. Also scoped the tag-inventory `[DIAG]` log (previously an unfiltered, repo-wide `git tag -l` dump) to the component's own glob and the resolved branch's ancestry, matching what resolution itself actually considers. |
+| `.woodpecker/pr.yml`, `.woodpecker/publish.yml` | Repointed the `Run release` steps from the stale `netanelzucaim123/master-versions:v1.0.5` (Docker Hub, predated this refactor) to `harbor.devopstashtiot.page/woodpecker/plugins/master-versions:prod`, manually built and pushed from this fix. |
+
+Verified end-to-end: this fix's own PR build (a `pull_request` run against `main`, with `plugin-git`'s default `tree:0` partial clone) is what exercises the exact target-branch-checkout path described above.
 | `plugins/master-versions/tests/test_release.py` | `TestBranchResolution._run()` now mocks `git remote get-url origin` to return a real URL (needed for the new config-persist step); `test_2_pr_event_fetches_target_branch_no_tag_flags` asserts the persisted `git config --add ... extraHeader` call instead of the old inline `-c` flag; `test_3_non_pr_also_fetches_its_own_branch_explicitly` asserts neither the header nor a `get-url` lookup happens when no token is set. |
