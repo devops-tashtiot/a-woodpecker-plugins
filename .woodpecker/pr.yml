@@ -47,7 +47,7 @@ steps:
       repo: "woodpecker"
       tags_file: "new_tags.txt"
       aliases: "prod"
-      username: "admin"
+      username: "svc_dev_ci_dvp"
       password:
         from_secret: harbor_password
 
