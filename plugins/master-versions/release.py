@@ -710,15 +710,16 @@ def release():
 
     # ── Diagnostics: the exact workspace state that decides tag resolution ─────
     # Prints once per run so a failing CI run reveals WHY describe finds no tag:
-    # a shallow clone (severs ancestry), tags simply not present (fetch/
-    # auto-follow didn't land them), or an ancestry mismatch.
-    _shallow   = run_command("git rev-parse --is-shallow-repository").stdout.strip()
-    _all_tags  = [t for t in run_command("git tag -l").stdout.strip().splitlines() if t]
-    _commits   = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
-    print(f">>> [DIAG] resolved_ref={resolved_ref}  shallow={_shallow}  "
-          f"commits_reachable={_commits}  total_tags_present={len(_all_tags)}")
-    if _all_tags:
-        print(f">>> [DIAG] tags present: {sorted(_all_tags)}")
+    # a shallow clone (severs ancestry) or the branch fetch itself didn't land.
+    # Which TAGS are actually relevant is a per-component question (each has its
+    # own glob), so that's printed per-location at STEP 1 below, not here — a
+    # single repo-wide tag dump at this point would mix in every other
+    # component's tags plus anything from the PR's own source branch, neither
+    # of which the actual resolution (git describe / git-cliff
+    # --use-branch-tags) ever considers.
+    _shallow = run_command("git rev-parse --is-shallow-repository").stdout.strip()
+    _commits = run_command(f"git rev-list --count {resolved_ref}").stdout.strip()
+    print(f">>> [DIAG] resolved_ref={resolved_ref}  shallow={_shallow}  commits_reachable={_commits}")
 
     # ── PHASE A: calculate the next version for every component ────────────────
     # STEP 1 (describe) + STEP 2 (git-cliff --bump) only — no files are written
@@ -790,6 +791,14 @@ def release():
         first_tag = f"{tag_prefix}{initial_tag_version}"
         print(f">>> [INFO] Latest tag (base): "
               f"{latest_tag or f'(none — first release → will use {first_tag})'}")
+        # Exactly what `git describe`/git-cliff --use-branch-tags consider for
+        # THIS component: matches its own glob AND is reachable from
+        # resolved_ref — never other components' tags, never the PR's own
+        # source-branch-only tags. Always printed (not just on a miss) so this
+        # never has to be inferred from the raw `git tag -l` inventory.
+        _relevant_tags = [t for t in run_command(f"git tag -l '{tag_glob}' --merged {resolved_ref}").stdout.strip().splitlines() if t]
+        print(f">>> [DIAG] tags relevant to '{location or '(root)'}' "
+              f"(glob '{tag_glob}', reachable from '{resolved_ref}'): {sorted(_relevant_tags) or '(none)'}")
         if not latest_tag:
             # Distinguish "tag truly absent" from "tag present but describe can't
             # reach it" (ancestry severed, e.g. shallow clone or orphaned commit).
