@@ -22,7 +22,7 @@ steps:
   #     PLUGIN_BASE_PATH: plugins
 
   - name: Run release
-    image: harbor.devopstashtiot.page/woodpecker/plugins/master-versions:prod
+    image: harbor.devopstashtiot.page/plugins/master-versions:prod
     settings:
       base_path: "."
       output_tags_file: "new_tags.txt"
@@ -44,7 +44,7 @@ steps:
     settings:
       base_path: "."
       registry: "harbor.devopstashtiot.page"
-      repo: "woodpecker"
+      repo: ""
       tags_file: "new_tags.txt"
       aliases: "prod"
       username: "svc_dev_ci_dvp"
