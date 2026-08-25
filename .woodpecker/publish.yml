@@ -26,7 +26,7 @@ steps:
   # (`git log -1`), so PLUGIN_MESSAGE would just sit there unused and
   # confusing. Only one of the two ever runs, per `when:` below.
   - name: Run release (manual)
-    image: netanelzucaim123/master-versions:v1.0.5
+    image: harbor.devopstashtiot.page/woodpecker/plugins/master-versions:prod
     when:
       - event: manual
     settings:
@@ -39,7 +39,7 @@ steps:
       changelog_level: "2,3,4"
 
   - name: Run release (merge)
-    image: netanelzucaim123/master-versions:v1.0.5
+    image: harbor.devopstashtiot.page/woodpecker/plugins/master-versions:prod
     when:
       - event: push
     settings:
