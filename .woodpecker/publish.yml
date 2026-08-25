@@ -27,6 +27,11 @@ steps:
   # confusing. Only one of the two ever runs, per `when:` below.
   - name: Run release (manual)
     image: harbor.devopstashtiot.page/plugins/master-versions:prod
+    # k8s defaults to imagePullPolicy: IfNotPresent for any non-:latest tag —
+    # a node that already cached an older :prod would silently keep running
+    # it forever, even though the registry content changed underneath. Force
+    # a fresh pull every run.
+    pull: true
     when:
       - event: manual
     settings:
@@ -40,6 +45,11 @@ steps:
 
   - name: Run release (merge)
     image: harbor.devopstashtiot.page/plugins/master-versions:prod
+    # k8s defaults to imagePullPolicy: IfNotPresent for any non-:latest tag —
+    # a node that already cached an older :prod would silently keep running
+    # it forever, even though the registry content changed underneath. Force
+    # a fresh pull every run.
+    pull: true
     when:
       - event: push
     settings:
