@@ -2,6 +2,25 @@
 
 Woodpecker CI plugin that parses a PR description, calculates semantic versions via git-cliff, writes `CHANGELOG.md` files per component, and records created tags for downstream steps.
 
+## master-versions vs version-file — which to use where
+
+There's a sibling plugin, `version-file` (in the `inbound-images` repo), that does the same job — parse a PR description, compute a semantic version via git-cliff, write a changelog — but answers "what version is this component at right now" by reading a plain `<location>/VERSION.txt` file instead of resolving a git tag.
+
+| | `master-versions` (this plugin) | `version-file` |
+|---|---|---|
+| Current-version source | A git tag (`<slug>-v1.2.3`), resolved via `git describe` against branch ancestry | A plain `<location>/VERSION.txt` file in the working tree |
+| Needs `PLUGIN_BITBUCKET_TOKEN` on every event? | Yes — authenticates the branch fetch used for tag resolution | No — only for `pull_request`'s PR-description fetch |
+| Clone settings (`partial`/`depth`/`tags`) | Self-heals a shallow/partial clone automatically, but still needs real ancestry | Genuinely irrelevant — no ancestry is ever read |
+| Hotfix on an old release | Cut the branch from the release's **tag** (`git checkout -b ... <tag>`) | Cut the branch from the **commit** where `VERSION.txt` held that value — no tag lookup needed |
+| Multiple images sharing one version, all moving together (e.g. a CA cert rotation) | Not supported — every component's version is independent | `images.txt` + `[**]`: root's `VERSION.txt` **is** the shared version; every declared image force-bumps in lockstep |
+| Scaffolding a new component | Create the directory yourself | List it in `images.txt` — the plugin creates the folder + empty `VERSION.txt` for you |
+| Generating a component's `Dockerfile` | Not supported — write it yourself | `Dockerfile.template` + `{{FROM_IMAGE}}` substitution, regenerated automatically unless hand-edited |
+| A location whose own path looks like a version (`0.11.29`, `2.9.3`) | ⚠️ known, currently-unfixed limitation — `feat`/`breaking` silently bump as patch instead (see `BUGS_AND_FIXES.md` §5) | Fixed — the git-cliff-facing name is sanitized (dots → underscores) so this never happens |
+
+**Use `master-versions`** (this plugin) for an ordinary "builtin" repo where every component is independently versioned and released through its own commit history.
+
+**Use `version-file`** for a "hardened"/`images.txt`-style repo where a set of images must all track one shared root version (rebuilt together whenever, say, a CA cert rotates), or simply when you'd rather version resolution not depend on git tag/branch ancestry at all.
+
 ### What is a CHANGELOG.md?
 
 A `CHANGELOG.md` is a file that lives inside each component's directory and tracks every release of that component in a human-readable format. Every time a component is released, a new entry is prepended to its `CHANGELOG.md` containing the version, the date, and the commit messages that triggered the release.
